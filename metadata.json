@@ -1,0 +1,5 @@
+{
+  "name": "화양초등학교 하교시간 기록 앱",
+  "description": "학생들이 직접 자신의 하교 시간을 기록하고 공유하는 스마트 스쿨 앱입니다. Gemini가 하교 메시지를 전해줍니다.",
+  "requestFramePermissions": []
+}
