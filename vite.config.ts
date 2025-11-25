@@ -8,7 +8,6 @@ export default defineConfig(({ mode }) => {
   
   return {
     plugins: [react()],
-    base: "/School-Out/",  // <--- 이 줄을 꼭 추가해야 합니다!
     define: {
       // 코드에서 process.env.API_KEY를 사용할 수 있도록 값을 치환해줍니다.
       // 만약 .env 파일이 없다면 빈 문자열로 처리하여 오류를 방지합니다.

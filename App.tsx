@@ -861,7 +861,9 @@ function App() {
                                  <div className="flex justify-between items-center">
                                    <div>
                                      <div className="font-bold text-gray-900">{studentName}</div>
-                                     <div className="text-xs text-indigo-600 mt-1">{record.dismissalMethod}</div>
+                                     <div className={`text-xs mt-1 ${(record.dismissalMethod === '통학차' || record.dismissalMethod === '에듀택시') ? 'text-red-600 font-bold' : 'text-indigo-600'}`}>
+                                       {record.dismissalMethod}
+                                     </div>
                                    </div>
                                    <div className="text-right flex items-center gap-3">
                                      <div className="text-lg font-bold text-gray-800">
