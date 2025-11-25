@@ -51,6 +51,67 @@ const formatDateForInput = (date: Date) => {
   return `${y}-${m}-${d}`;
 };
 
+// --- Components (Defined outside App to prevent re-render flickering) ---
+
+interface AdminLoginModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  value: string;
+  onChange: (val: string) => void;
+  onSubmit: (e: React.FormEvent) => void;
+}
+
+const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ isOpen, onClose, value, onChange, onSubmit }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center px-4">
+      <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm animate-fade-in">
+        <h3 className="text-xl font-bold text-gray-900 mb-2">관리자 로그인</h3>
+        <p className="text-sm text-gray-500 mb-4">선생님 전용 관리자 코드를 입력하세요.</p>
+        <form onSubmit={onSubmit}>
+          <input 
+            type="password" 
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="관리자 코드"
+            autoFocus
+            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mb-4 focus:ring-2 focus:ring-indigo-500 outline-none"
+          />
+          <div className="flex gap-2">
+            <button 
+              type="button" 
+              onClick={onClose}
+              className="flex-1 py-3 text-gray-600 font-medium bg-gray-100 rounded-xl hover:bg-gray-200"
+            >
+              취소
+            </button>
+            <button 
+              type="submit" 
+              className="flex-1 py-3 text-white font-bold bg-indigo-600 rounded-xl hover:bg-indigo-700"
+            >
+              확인
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+const NotificationToast = ({ notifications }: { notifications: Notification[] }) => (
+  <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+    {notifications.map(n => (
+      <div key={n.id} className="bg-white border-l-4 border-green-500 shadow-xl rounded-lg p-4 w-80 transform transition-all duration-500 ease-in-out animate-slide-in pointer-events-auto">
+        <div className="flex justify-between items-start">
+          <h4 className="font-bold text-gray-800 text-sm">{n.title}</h4>
+          <span className="text-xs text-gray-400">방금 전</span>
+        </div>
+        <p className="text-gray-600 text-sm mt-1">{n.body}</p>
+      </div>
+    ))}
+  </div>
+);
+
 function App() {
   // --- State ---
   const [role, setRole] = useState<UserRole>('STUDENT');
@@ -440,63 +501,16 @@ function App() {
     return days;
   };
 
-  // --- Components ---
-
-  const AdminLoginModal = () => {
-    if (!showAdminLogin) return null;
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center px-4">
-        <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm animate-fade-in">
-          <h3 className="text-xl font-bold text-gray-900 mb-2">관리자 로그인</h3>
-          <p className="text-sm text-gray-500 mb-4">선생님 전용 관리자 코드를 입력하세요.</p>
-          <form onSubmit={handleAdminLoginSubmit}>
-            <input 
-              type="password" 
-              value={adminCodeInput}
-              onChange={(e) => setAdminCodeInput(e.target.value)}
-              placeholder="관리자 코드"
-              autoFocus
-              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mb-4 focus:ring-2 focus:ring-indigo-500 outline-none"
-            />
-            <div className="flex gap-2">
-              <button 
-                type="button" 
-                onClick={() => setShowAdminLogin(false)}
-                className="flex-1 py-3 text-gray-600 font-medium bg-gray-100 rounded-xl hover:bg-gray-200"
-              >
-                취소
-              </button>
-              <button 
-                type="submit" 
-                className="flex-1 py-3 text-white font-bold bg-indigo-600 rounded-xl hover:bg-indigo-700"
-              >
-                확인
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    );
-  };
-
-  const NotificationToast = () => (
-    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
-      {notifications.map(n => (
-        <div key={n.id} className="bg-white border-l-4 border-green-500 shadow-xl rounded-lg p-4 w-80 transform transition-all duration-500 ease-in-out animate-slide-in pointer-events-auto">
-          <div className="flex justify-between items-start">
-            <h4 className="font-bold text-gray-800 text-sm">{n.title}</h4>
-            <span className="text-xs text-gray-400">방금 전</span>
-          </div>
-          <p className="text-gray-600 text-sm mt-1">{n.body}</p>
-        </div>
-      ))}
-    </div>
-  );
-
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 font-sans pb-20">
-      <NotificationToast />
-      <AdminLoginModal />
+      <NotificationToast notifications={notifications} />
+      <AdminLoginModal 
+        isOpen={showAdminLogin} 
+        onClose={() => setShowAdminLogin(false)}
+        value={adminCodeInput}
+        onChange={setAdminCodeInput}
+        onSubmit={handleAdminLoginSubmit}
+      />
       
       {/* Header / Role Switcher */}
       <header className="bg-white shadow-sm sticky top-0 z-10">
