@@ -22,7 +22,8 @@ const DISMISSAL_METHODS = [
   '에듀택시',
   '시내버스',
   '공부방 차량',
-  '부모님 차량'
+  '부모님 차량',
+  '도보'    // <--- 여기 추가!
 ];
 
 // Constraints for Time Picker
