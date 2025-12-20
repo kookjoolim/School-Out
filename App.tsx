@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { DismissalRecord, UserRole, Notification } from './types';
-import { generateGoodbyeMessage } from './services/geminiService';
+import { DismissalRecord, UserRole, Notification, LunchData } from './types';
+import { generateGoodbyeMessage, fetchLunchMenu } from './services/geminiService';
 import { db } from './services/firebase';
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 
@@ -23,7 +23,7 @@ const DISMISSAL_METHODS = [
   '시내버스',
   '공부방 차량',
   '부모님 차량',
-  '도보'    // <--- 여기 추가!
+  '도보'
 ];
 
 // Constraints for Time Picker
@@ -66,7 +66,7 @@ const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ isOpen, onClose, valu
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center px-4">
-      <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm animate-fade-in">
+      <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-sm animate-fade-in">
         <h3 className="text-xl font-bold text-gray-900 mb-2">관리자 로그인</h3>
         <p className="text-sm text-gray-500 mb-4">선생님 전용 관리자 코드를 입력하세요.</p>
         <form onSubmit={onSubmit}>
@@ -166,23 +166,25 @@ function App() {
   // Date State (Display)
   const [todayDate, setTodayDate] = useState<string>('');
 
+  // Lunch Menu State
+  const [lunchDate, setLunchDate] = useState<Date>(new Date());
+  const [lunchInfo, setLunchInfo] = useState<LunchData | null>(null);
+  const [lunchLoading, setLunchLoading] = useState<boolean>(false);
+  const [lunchError, setLunchError] = useState<string | null>(null);
+
   // --- Effects ---
   
   // Firebase Realtime Listener
-  // 앱이 켜지면 Firebase 데이터베이스를 '구독'합니다. 데이터가 바뀌면 즉시 화면을 업데이트합니다.
   useEffect(() => {
-    // 쿼리: 하교 기록(dismissals)을 시간 역순(최신순)으로 가져오기
     const q = query(collection(db, "dismissals"), orderBy("timestamp", "desc"));
-    
-    // 실시간 리스너 연결
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const loadedRecords = snapshot.docs.map(doc => ({
-        id: doc.id, // Firestore 문서 ID를 사용
+        id: doc.id, 
         ...doc.data()
       })) as DismissalRecord[];
       
       setRecords(loadedRecords);
-      setDbError(null); // 성공하면 에러 메시지 초기화
+      setDbError(null); 
     }, (error) => {
       console.error("Firebase 데이터 불러오기 실패:", error);
       if (error.code === 'permission-denied') {
@@ -191,8 +193,6 @@ function App() {
         setDbError(`데이터 연결 오류: ${error.message}`);
       }
     });
-
-    // 앱 종료(언마운트) 시 리스너 해제
     return () => unsubscribe();
   }, []);
 
@@ -208,9 +208,25 @@ function App() {
     setTodayDate(date.toLocaleDateString('ko-KR', options));
   }, []);
 
+  // Fetch Lunch Menu
+  useEffect(() => {
+    const loadLunch = async () => {
+      setLunchLoading(true);
+      setLunchError(null);
+      try {
+        const data = await fetchLunchMenu(lunchDate);
+        setLunchInfo(data);
+      } catch (err: any) {
+        setLunchError(err.message);
+      } finally {
+        setLunchLoading(false);
+      }
+    };
+    loadLunch();
+  }, [lunchDate]);
+
   // Initialize Name when Grade changes
   useEffect(() => {
-    // When grade changes, reset name to empty to force selection
     setName('');
   }, [grade]);
 
@@ -276,7 +292,6 @@ function App() {
     const recordDate = new Date();
     recordDate.setHours(hours24, parseInt(minute), 0, 0);
 
-    // 저장할 데이터 준비 (ID는 Firestore가 자동 생성하므로 제외)
     const newRecordData = {
       studentName: name,
       grade: grade,
@@ -286,21 +301,18 @@ function App() {
     };
 
     try {
-      // Firebase Firestore에 데이터 추가
       await addDoc(collection(db, "dismissals"), newRecordData);
       
-      setHasSubmitted(true); // Disable button
+      setHasSubmitted(true); 
       
-      const timeDisplay = recordDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
       showNotification(
         "📢 하교 기록 저장됨",
         `${name} 학생의 하교 정보가 서버에 저장되었습니다.`
       );
 
-      // Reset button after 2 seconds for the next student
       setTimeout(() => {
         setHasSubmitted(false);
-        setName(''); // Clear name to prevent double submission
+        setName(''); 
       }, 2000);
 
     } catch (error: any) {
@@ -318,7 +330,7 @@ function App() {
   // --- Edit & Delete Actions (Teacher) ---
 
   const handleDeleteClick = (e: React.MouseEvent, id: string, studentName: string) => {
-    e.stopPropagation(); // Stop event from bubbling
+    e.stopPropagation(); 
     setDeleteModal({ isOpen: true, id, name: studentName });
   };
 
@@ -339,18 +351,14 @@ function App() {
     const date = new Date(record.timestamp);
     let h = date.getHours();
     
-    // Convert to 12-hour format for the picker mapping
-    // Our HOURS list is ['1', '2', '3', '4'] (representing PM)
     if (h > 12) h -= 12; 
     
     setEditingId(record.id);
     setEditMethod(record.dismissalMethod);
     
-    // Ensure h matches one of our options, otherwise default to '1'
     const hStr = h.toString();
     setEditHour(HOURS.includes(hStr) ? hStr : '1');
     
-    // Find closest 10-minute interval match
     const m = date.getMinutes();
     const mStr = Math.floor(m / 10) * 10;
     const mStrFormatted = mStr === 0 ? '00' : mStr.toString();
@@ -363,16 +371,12 @@ function App() {
 
   const saveEditing = async (record: DismissalRecord) => {
     try {
-      // Use the existing date to preserve year/month/day correctly
       const targetDate = new Date(record.timestamp);
       
-      // Calculate new time components
-      // The picker uses '1' for '1 PM' (13:00)
       const selectedPmHour = parseInt(editHour, 10);
       const hours24 = selectedPmHour + 12; 
       const minutes = parseInt(editMinute, 10);
 
-      // Update the time on the date object
       targetDate.setHours(hours24);
       targetDate.setMinutes(minutes);
       targetDate.setSeconds(0);
@@ -418,10 +422,8 @@ function App() {
       return;
     }
 
-    // Sort by timestamp
     targetRecords.sort((a, b) => b.timestamp - a.timestamp);
 
-    // Format data for Excel
     const excelData = targetRecords.map(r => ({
       '날짜': new Date(r.timestamp).toLocaleDateString('ko-KR'),
       '시간': new Date(r.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
@@ -431,34 +433,28 @@ function App() {
       '메시지': r.message
     }));
 
-    // Create workbook and sheet
     const ws = XLSX.utils.json_to_sheet(excelData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "하교기록");
 
-    // Adjust column widths
     const wscols = [
-      {wch: 15}, // 날짜
-      {wch: 10}, // 시간
-      {wch: 8},  // 학년
-      {wch: 10}, // 이름
-      {wch: 15}, // 하교방법
-      {wch: 40}, // 메시지
+      {wch: 15}, 
+      {wch: 10}, 
+      {wch: 8},  
+      {wch: 10}, 
+      {wch: 15}, 
+      {wch: 40}, 
     ];
     ws['!cols'] = wscols;
 
-    // Download file
     XLSX.writeFile(wb, `하교기록_${exportStartDate}_${exportEndDate}.xlsx`);
   };
 
   // --- Filtering & Calendar Logic ---
-  
-  // Filter for Search (Existing functionality)
   const filteredRecords = records.filter(r => 
     r.studentName.includes(searchTerm)
   );
 
-  // Calendar Navigation
   const handlePrevMonth = () => {
     setCurrentCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
   };
@@ -467,7 +463,14 @@ function App() {
     setCurrentCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
   };
 
-  // Generate Calendar Days
+  const handlePrevLunchDate = () => {
+    setLunchDate(prev => new Date(prev.getFullYear(), prev.getMonth(), prev.getDate() - 1));
+  };
+
+  const handleNextLunchDate = () => {
+    setLunchDate(prev => new Date(prev.getFullYear(), prev.getMonth(), prev.getDate() + 1));
+  };
+
   const generateCalendarDays = () => {
     const year = currentCalendarMonth.getFullYear();
     const month = currentCalendarMonth.getMonth();
@@ -475,11 +478,9 @@ function App() {
     const firstDay = getFirstDayOfMonth(year, month);
     
     const days = [];
-    // Empty slots for previous month
     for (let i = 0; i < firstDay; i++) {
       days.push(<div key={`empty-${i}`} className="h-10"></div>);
     }
-    // Days
     for (let d = 1; d <= daysInMonth; d++) {
       const date = new Date(year, month, d);
       const isSelected = isSameDate(date, selectedDate);
@@ -517,7 +518,7 @@ function App() {
       <header className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">S</div>
+            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">H</div>
             <h1 className="text-xl font-bold text-gray-900">화양초등학교 하교시간 기록 앱</h1>
           </div>
           <div className="flex bg-gray-100 p-1 rounded-lg">
@@ -609,23 +610,16 @@ function App() {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">하교 시간</label>
-                    {/* Custom Time Picker Component */}
                     <div className="w-full bg-gray-50 border border-gray-200 rounded-xl flex items-center overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-indigo-500 transition-all">
-                      {/* Icon */}
                       <div className="pl-4 py-3 flex-shrink-0 flex items-center">
                         <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                         </svg>
                       </div>
-
-                      {/* "오후" Text Centered */}
                       <div className="px-3 flex-shrink-0 flex items-center justify-center">
                         <span className="text-sm font-bold text-gray-600">오후</span>
                       </div>
-                      
-                      {/* Time Selector Area */}
                       <div className="flex-1 flex items-center min-w-0">
-                        {/* Hour */}
                         <div className="flex-1 relative min-w-0">
                           <select 
                             value={hour} 
@@ -635,10 +629,7 @@ function App() {
                             {HOURS.map(h => <option key={h} value={h}>{h}시</option>)}
                           </select>
                         </div>
-                        
                         <div className="text-gray-400 font-bold flex-shrink-0 px-1">:</div>
-                        
-                        {/* Minute */}
                         <div className="flex-1 relative min-w-0">
                           <select 
                             value={minute} 
@@ -658,7 +649,7 @@ function App() {
                   disabled={loading || !name || hasSubmitted}
                   className={`w-full py-4 rounded-xl text-white font-bold text-lg shadow-lg transform transition-all 
                     ${hasSubmitted 
-                      ? 'bg-green-500 scale-100' // Success State
+                      ? 'bg-green-500 scale-100' 
                       : loading || !name 
                         ? 'bg-indigo-300 cursor-not-allowed scale-100 shadow-none' 
                         : 'bg-indigo-600 hover:bg-indigo-700 hover:shadow-indigo-200 active:scale-95'
@@ -677,14 +668,14 @@ function App() {
               </form>
             </div>
 
-            {/* Roster Status View (Always visible below form for overview) */}
+            {/* Roster Status View */}
              <div className="mt-8 animate-fade-in">
                <div className="text-center mb-6">
                  <h3 className="text-lg font-bold text-gray-900">오늘의 하교 현황</h3>
                  <p className="text-gray-500 text-xs mt-1">이름이 보라색으로 칠해진 친구는 하교를 완료한 친구입니다.</p>
                </div>
 
-               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-8">
                  <div className="divide-y divide-gray-100">
                    {[1, 2, 3, 4, 5, 6].map(g => (
                      <div key={g} className="p-4">
@@ -701,6 +692,82 @@ function App() {
                        </div>
                      </div>
                    ))}
+                 </div>
+               </div>
+             </div>
+
+             {/* Lunch Menu Section */}
+             <div className="mt-8 animate-fade-in pb-12">
+               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                 <div className="bg-indigo-600 p-4 flex justify-between items-center text-white">
+                   <div className="flex items-center gap-2">
+                     <span className="text-xl">🍱</span>
+                     <h3 className="font-bold">오늘의 급식 메뉴</h3>
+                   </div>
+                   <div className="flex items-center gap-3">
+                     <button 
+                       onClick={handlePrevLunchDate}
+                       className="w-8 h-8 rounded-full bg-white bg-opacity-20 flex items-center justify-center hover:bg-opacity-30 transition-all"
+                     >
+                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+                     </button>
+                     <span className="text-sm font-medium">
+                       {lunchDate.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
+                     </span>
+                     <button 
+                       onClick={handleNextLunchDate}
+                       className="w-8 h-8 rounded-full bg-white bg-opacity-20 flex items-center justify-center hover:bg-opacity-30 transition-all"
+                     >
+                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                     </button>
+                   </div>
+                 </div>
+
+                 <div className="p-6">
+                   {lunchLoading ? (
+                     <div className="py-8 flex flex-col items-center justify-center space-y-4">
+                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                       <p className="text-gray-500 text-sm">급식 정보를 검색하고 있어요...</p>
+                     </div>
+                   ) : lunchError ? (
+                     <div className="py-8 text-center">
+                       <p className="text-red-500 text-sm mb-2">❌ 정보를 불러오지 못했습니다.</p>
+                       <button 
+                         onClick={() => setLunchDate(new Date(lunchDate))}
+                         className="text-indigo-600 text-xs font-bold underline"
+                       >
+                         다시 시도하기
+                       </button>
+                     </div>
+                   ) : lunchInfo ? (
+                     <div className="space-y-4">
+                       <div className="text-gray-700 whitespace-pre-wrap leading-relaxed text-sm bg-gray-50 p-4 rounded-xl border border-gray-100">
+                         {lunchInfo.menuText}
+                       </div>
+                       
+                       {lunchInfo.sources && lunchInfo.sources.length > 0 && (
+                         <div className="pt-4 border-t border-gray-100">
+                           <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">정보 출처</h4>
+                           <div className="flex flex-wrap gap-2">
+                             {lunchInfo.sources.map((source, idx) => (
+                               <a 
+                                 key={idx} 
+                                 href={source.uri} 
+                                 target="_blank" 
+                                 rel="noopener noreferrer"
+                                 className="text-[10px] bg-gray-100 text-gray-500 px-2 py-1 rounded-md hover:bg-indigo-50 hover:text-indigo-600 transition-colors flex items-center gap-1"
+                               >
+                                 <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                                 {source.title.length > 15 ? source.title.substring(0, 15) + '...' : source.title}
+                               </a>
+                             ))}
+                           </div>
+                         </div>
+                       )}
+                     </div>
+                   ) : (
+                     <p className="text-center text-gray-400 text-sm py-8">표시할 급식 정보가 없습니다.</p>
+                   )}
                  </div>
                </div>
              </div>
@@ -815,7 +882,6 @@ function App() {
                      </h4>
                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                        {STUDENT_DATA[gradeLevel].map(studentName => {
-                         // Find record for this student on the selected date
                          const record = records.find(r => 
                            r.studentName === studentName && 
                            r.grade === gradeLevel &&
@@ -823,14 +889,11 @@ function App() {
                          );
 
                          if (record) {
-                           // Is Editing?
                            const isEditing = editingId === record.id;
                            
                            return (
                              <div key={studentName} className={`rounded-lg p-3 border transition-colors group ${isEditing ? 'bg-white border-indigo-400 ring-2 ring-indigo-100' : 'bg-indigo-50 border-indigo-100'}`}>
-                               
                                {isEditing ? (
-                                 // --- EDIT MODE ---
                                  <div className="space-y-2">
                                    <div className="flex justify-between items-center mb-2">
                                       <span className="font-bold text-gray-900">{studentName}</span>
@@ -858,7 +921,6 @@ function App() {
                                    </div>
                                  </div>
                                ) : (
-                                 // --- VIEW MODE ---
                                  <div className="flex justify-between items-center">
                                    <div>
                                      <div className="font-bold text-gray-900">{studentName}</div>
@@ -904,7 +966,6 @@ function App() {
                              </div>
                            );
                          } else {
-                           // Student hasn't dismissed yet
                            return (
                              <div key={studentName} className="bg-gray-50 rounded-lg p-3 border border-gray-100 flex justify-between items-center opacity-75">
                                <div>
@@ -928,7 +989,7 @@ function App() {
         )}
       </main>
 
-      {/* Delete Confirmation Modal (Inlined for stability) */}
+      {/* Delete Confirmation Modal */}
       {deleteModal.isOpen && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center px-4 animate-fade-in" 

@@ -7,7 +7,6 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, (process as any).cwd(), '');
   
   return {
-    base: "/School-Out/",  // <--- 이 부분이 꼭 있어야 합니다!
     plugins: [react()],
     define: {
       // 코드에서 process.env.API_KEY를 사용할 수 있도록 값을 치환해줍니다.

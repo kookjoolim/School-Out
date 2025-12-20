@@ -15,3 +15,13 @@ export interface Notification {
   body: string;
   visible: boolean;
 }
+
+export interface Source {
+  title: string;
+  uri: string;
+}
+
+export interface LunchData {
+  menuText: string;
+  sources: Source[];
+}

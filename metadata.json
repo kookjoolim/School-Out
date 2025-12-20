@@ -1,5 +1,30 @@
 {
-  "name": "화양초등학교 하교시간 기록 앱",
-  "description": "학생들이 직접 자신의 하교 시간을 기록하고 공유하는 스마트 스쿨 앱입니다. Gemini가 하교 메시지를 전해줍니다.",
-  "requestFramePermissions": []
+  "name": "school-dismissal-app",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@google/genai": "latest",
+    "firebase": "^10.8.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.0",
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.3",
+    "typescript": "^5.2.2",
+    "vite": "^5.2.0"
+  },
+  "requestFramePermissions": [],
+  "description": ""
 }
