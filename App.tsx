@@ -1,44 +1,28 @@
-import React, { useState, useEffect } from 'react';
-import { DismissalRecord, UserRole, Notification, LunchData } from './types';
+
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { DismissalRecord, UserRole, LunchData, Student, TeacherView } from './types';
 import { generateGoodbyeMessage, fetchLunchMenu } from './services/geminiService';
 import { db } from './services/firebase';
-import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, writeBatch } from 'firebase/firestore';
 
 // Declare SheetJS global
 declare const XLSX: any;
 
-// --- Data Constants ---
-const STUDENT_DATA: Record<number, string[]> = {
-  1: ['김건우', '김하설', '서아인'],
-  2: ['김태준', '윤재성', '윤지수', '양혜린'],
-  3: ['김온유', '박소윤', '서유인'],
-  4: ['강태양', '김다은', '박가은', '심은정', '엄승환', '최은율', '박초연'],
-  5: ['서상준', '전지후', '차승환', '임지효'],
-  6: ['강려울', '강지온', '박민혁', '박수정', '박시은', '차은애']
-};
-
-const DISMISSAL_METHODS = [
-  '통학차',
-  '에듀택시',
-  '시내버스',
-  '공부방 차량',
-  '부모님 차량',
-  '도보'
+// --- Default Data for Seeding ---
+const INITIAL_STUDENTS: Omit<Student, 'id'>[] = [
+  { grade: 1, name: '김건우' }, { grade: 1, name: '김하설' }, { grade: 1, name: '서아인' },
+  { grade: 2, name: '김태준' }, { grade: 2, name: '윤재성' }, { grade: 2, name: '윤지수' }, { grade: 2, name: '양혜린' },
+  { grade: 3, name: '김온유' }, { grade: 3, name: '박소윤' }, { grade: 3, name: '서유인' },
+  { grade: 4, name: '강태양' }, { grade: 4, name: '김다은' }, { grade: 4, name: '박가은' }, { grade: 4, name: '심은정' }, { grade: 4, name: '엄승환' }, { grade: 4, name: '최은율' }, { grade: 4, name: '박초연' },
+  { grade: 5, name: '서상준' }, { grade: 5, name: '전지후' }, { grade: 5, name: '차승환' }, { grade: 5, name: '임지효' },
+  { grade: 6, name: '강려울' }, { grade: 6, name: '강지온' }, { grade: 6, name: '박민혁' }, { grade: 6, name: '박수정' }, { grade: 6, name: '박시은' }, { grade: 6, name: '차은애' }
 ];
 
-// Constraints for Time Picker
+const DISMISSAL_METHODS = ['통학차', '에듀택시', '시내버스', '공부방 차량', '부모님 차량', '도보'];
 const HOURS = ['1', '2', '3', '4'];
 const MINUTES = ['00', '10', '20', '30', '40', '50'];
 
-// --- Helper Functions for Calendar ---
-const getDaysInMonth = (year: number, month: number) => {
-  return new Date(year, month + 1, 0).getDate();
-};
-
-const getFirstDayOfMonth = (year: number, month: number) => {
-  return new Date(year, month, 1).getDay();
-};
-
+// --- Helper Functions ---
 const isSameDate = (date1: Date, date2: Date) => {
   return date1.getFullYear() === date2.getFullYear() &&
          date1.getMonth() === date2.getMonth() &&
@@ -52,23 +36,20 @@ const formatDateForInput = (date: Date) => {
   return `${y}-${m}-${d}`;
 };
 
-// --- Components (Defined outside App to prevent re-render flickering) ---
+const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
+const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
 
-interface AdminLoginModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  value: string;
-  onChange: (val: string) => void;
-  onSubmit: (e: React.FormEvent) => void;
-}
+// --- UI Components ---
 
-const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ isOpen, onClose, value, onChange, onSubmit }) => {
+const AdminLoginModal = ({ isOpen, onClose, value, onChange, onSubmit }: any) => {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center px-4">
-      <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-sm animate-fade-in">
-        <h3 className="text-xl font-bold text-gray-900 mb-2">관리자 로그인</h3>
-        <p className="text-sm text-gray-500 mb-4">선생님 전용 관리자 코드를 입력하세요.</p>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center px-4">
+      <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-[320px] animate-fade-in text-center border border-gray-100">
+        <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600 mx-auto mb-4">
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 00-2 2zm10-10V7a4 4 0 00-8 0v4h8z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </div>
+        <h3 className="text-xl font-black text-gray-900 mb-2">관리자 인증</h3>
         <form onSubmit={onSubmit}>
           <input 
             type="password" 
@@ -76,22 +57,11 @@ const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ isOpen, onClose, valu
             onChange={(e) => onChange(e.target.value)}
             placeholder="관리자 코드"
             autoFocus
-            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mb-4 focus:ring-2 focus:ring-indigo-500 outline-none"
+            className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-2xl mb-4 focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 outline-none text-center text-xl tracking-[0.3em] font-black"
           />
           <div className="flex gap-2">
-            <button 
-              type="button" 
-              onClick={onClose}
-              className="flex-1 py-3 text-gray-600 font-medium bg-gray-100 rounded-xl hover:bg-gray-200"
-            >
-              취소
-            </button>
-            <button 
-              type="submit" 
-              className="flex-1 py-3 text-white font-bold bg-indigo-600 rounded-xl hover:bg-indigo-700"
-            >
-              확인
-            </button>
+            <button type="button" onClick={onClose} className="flex-1 py-3 text-gray-500 font-bold bg-gray-100 rounded-2xl hover:bg-gray-200 transition-colors text-sm">취소</button>
+            <button type="submit" className="flex-1 py-3 text-white font-black bg-indigo-600 rounded-2xl hover:bg-indigo-700 transition-all text-sm">확인</button>
           </div>
         </form>
       </div>
@@ -99,950 +69,447 @@ const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ isOpen, onClose, valu
   );
 };
 
-const NotificationToast = ({ notifications }: { notifications: Notification[] }) => (
-  <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
-    {notifications.map(n => (
-      <div key={n.id} className="bg-white border-l-4 border-green-500 shadow-xl rounded-lg p-4 w-80 transform transition-all duration-500 ease-in-out animate-slide-in pointer-events-auto">
-        <div className="flex justify-between items-start">
-          <h4 className="font-bold text-gray-800 text-sm">{n.title}</h4>
-          <span className="text-xs text-gray-400">방금 전</span>
+const DeleteConfirmModal = ({ isOpen, onCancel, onConfirm, title, message, isDeleting }: any) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center px-4">
+      <div className="bg-white rounded-3xl p-8 w-full max-w-sm animate-fade-in shadow-2xl">
+        <h3 className="text-xl font-black text-gray-900 mb-2">{title}</h3>
+        <p className="text-sm text-gray-500 mb-8 leading-relaxed">{message}</p>
+        <div className="flex gap-3">
+          <button onClick={onCancel} className="flex-1 py-4 bg-gray-100 text-gray-500 font-bold rounded-2xl">취소</button>
+          <button onClick={onConfirm} disabled={isDeleting} className="flex-1 py-4 bg-red-500 text-white font-bold rounded-2xl shadow-lg shadow-red-100 flex items-center justify-center gap-2">
+            {isDeleting ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div> : '삭제'}
+          </button>
         </div>
-        <p className="text-gray-600 text-sm mt-1">{n.body}</p>
       </div>
-    ))}
-  </div>
-);
+    </div>
+  );
+};
 
 function App() {
-  // --- State ---
   const [role, setRole] = useState<UserRole>('STUDENT');
-  
-  // Records state (Managed by Firebase)
+  const [teacherView, setTeacherView] = useState<TeacherView>('DASHBOARD');
   const [records, setRecords] = useState<DismissalRecord[]>([]);
-
+  const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [dbError, setDbError] = useState<string | null>(null);
-  
-  // Student Submission State
-  const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [lunchLoading, setLunchLoading] = useState(false);
+  const [lunchInfo, setLunchInfo] = useState<LunchData | null>(null);
+  const [lunchDate, setLunchDate] = useState<Date>(new Date());
 
-  // Auth State
-  const [showAdminLogin, setShowAdminLogin] = useState(false);
-  const [adminCodeInput, setAdminCodeInput] = useState('');
-
-  // Form State
   const [grade, setGrade] = useState<number>(1);
   const [name, setName] = useState<string>('');
   const [dismissalMethod, setDismissalMethod] = useState<string>(DISMISSAL_METHODS[0]);
-  
-  // Time State
-  const [hour, setHour] = useState<string>('1');
-  const [minute, setMinute] = useState<string>('00');
+  const [hour, setHour] = useState<string>('4');
+  const [minute, setMinute] = useState<string>('30');
+  const [hasSubmitted, setHasSubmitted] = useState(false);
 
-  // Search State (Teacher)
-  const [searchTerm, setSearchTerm] = useState('');
-  
-  // Calendar State (Teacher)
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [adminCodeInput, setAdminCodeInput] = useState('');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [currentCalendarMonth, setCurrentCalendarMonth] = useState<Date>(new Date());
-
-  // Export State (Teacher)
   const [exportStartDate, setExportStartDate] = useState(formatDateForInput(new Date()));
   const [exportEndDate, setExportEndDate] = useState(formatDateForInput(new Date()));
+  const [newStudentName, setNewStudentName] = useState<Record<number, string>>({});
 
-  // Edit State (Teacher)
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editMethod, setEditMethod] = useState('');
-  const [editHour, setEditHour] = useState('1');
-  const [editMinute, setEditMinute] = useState('00');
-
-  // Delete Modal State (Teacher)
-  const [deleteModal, setDeleteModal] = useState<{isOpen: boolean, id: string | null, name: string}>({
-    isOpen: false, id: null, name: ''
-  });
+  const [deleteModal, setDeleteModal] = useState<{isOpen: boolean, type: 'RECORD' | 'STUDENT', id: string | null, name: string}>({ isOpen: false, type: 'RECORD', id: null, name: '' });
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Date State (Display)
-  const [todayDate, setTodayDate] = useState<string>('');
-
-  // Lunch Menu State
-  const [lunchDate, setLunchDate] = useState<Date>(new Date());
-  const [lunchInfo, setLunchInfo] = useState<LunchData | null>(null);
-  const [lunchLoading, setLunchLoading] = useState<boolean>(false);
-  const [lunchError, setLunchError] = useState<string | null>(null);
-
-  // --- Effects ---
-  
-  // Firebase Realtime Listener
   useEffect(() => {
-    const q = query(collection(db, "dismissals"), orderBy("timestamp", "desc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const loadedRecords = snapshot.docs.map(doc => ({
-        id: doc.id, 
-        ...doc.data()
-      })) as DismissalRecord[];
-      
-      setRecords(loadedRecords);
-      setDbError(null); 
-    }, (error) => {
-      console.error("Firebase 데이터 불러오기 실패:", error);
-      if (error.code === 'permission-denied') {
-        setDbError("🚨 데이터베이스 접근 권한이 없습니다. Firebase 콘솔 > Firestore Database > [규칙] 탭에서 'allow read, write: if true;'로 설정되어 있는지 확인해주세요.");
+    const unsubRecords = onSnapshot(query(collection(db, "dismissals"), orderBy("timestamp", "desc")), (snap) => {
+      setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as DismissalRecord)));
+    });
+    const unsubStudents = onSnapshot(collection(db, "students"), async (snap) => {
+      if (snap.empty) {
+        const batch = writeBatch(db);
+        INITIAL_STUDENTS.forEach(s => batch.set(doc(collection(db, "students")), s));
+        await batch.commit();
       } else {
-        setDbError(`데이터 연결 오류: ${error.message}`);
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Student));
+        setStudents(list.sort((a, b) => a.grade === b.grade ? a.name.localeCompare(b.name, 'ko-KR') : a.grade - b.grade));
       }
     });
-    return () => unsubscribe();
+    return () => { unsubRecords(); unsubStudents(); };
   }, []);
 
-  // Set Today's Date
-  useEffect(() => {
-    const date = new Date();
-    const options: Intl.DateTimeFormatOptions = { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric', 
-      weekday: 'long' 
-    };
-    setTodayDate(date.toLocaleDateString('ko-KR', options));
-  }, []);
+  useEffect(() => { loadLunch(); }, [lunchDate]);
 
-  // Fetch Lunch Menu
-  useEffect(() => {
-    const loadLunch = async () => {
-      setLunchLoading(true);
-      setLunchError(null);
-      try {
-        const data = await fetchLunchMenu(lunchDate);
-        setLunchInfo(data);
-      } catch (err: any) {
-        setLunchError(err.message);
-      } finally {
-        setLunchLoading(false);
-      }
-    };
-    loadLunch();
-  }, [lunchDate]);
-
-  // Initialize Name when Grade changes
-  useEffect(() => {
-    setName('');
-  }, [grade]);
-
-  // Initialize Time on mount (Auto-set logic check)
-  useEffect(() => {
-    if (DISMISSAL_METHODS[0] === '통학차' || DISMISSAL_METHODS[0] === '에듀택시') {
-      setHour('4');
-      setMinute('30');
-    }
-  }, []);
-
-  // --- Actions ---
-
-  const showNotification = (title: string, body: string) => {
-    const id = Date.now().toString();
-    const newNotif: Notification = { id, title, body, visible: true };
-    setNotifications(prev => [...prev, newNotif]);
-    setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== id));
-    }, 4000);
+  const loadLunch = async (force: boolean = false) => {
+    setLunchLoading(true);
+    try {
+      const data = await fetchLunchMenu(lunchDate, force);
+      setLunchInfo(data);
+    } catch (e) { setLunchInfo({ menuText: "급식 정보를 가져오지 못했습니다.", sources: [] }); }
+    finally { setLunchLoading(false); }
   };
 
-  const handleRoleButtonClick = (targetRole: UserRole) => {
-    if (targetRole === 'TEACHER') {
-      setShowAdminLogin(true);
-      setAdminCodeInput('');
-    } else {
-      setRole('STUDENT');
-    }
-  };
-
-  const handleAdminLoginSubmit = (e: React.FormEvent) => {
+  const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (adminCodeInput === 'hy6516') {
       setRole('TEACHER');
       setShowAdminLogin(false);
-    } else {
-      alert('올바른 관리자 코드를 입력해 주세요.');
-      setRole('STUDENT');
-      setShowAdminLogin(false);
-    }
+    } else { alert('코드가 올바르지 않습니다.'); }
   };
 
-  const handleMethodChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newMethod = e.target.value;
-    setDismissalMethod(newMethod);
-    if (newMethod === '통학차' || newMethod === '에듀택시') {
-      setHour('4');
-      setMinute('30');
-    }
-  };
-
-  const handleDismissal = async (e: React.FormEvent) => {
+  const handleDismissalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name) return;
-
     setLoading(true);
-    
-    // Generate AI message
-    const aiMessage = await generateGoodbyeMessage(name, grade);
-    
-    const hours24 = parseInt(hour) + 12; 
-    const recordDate = new Date();
-    recordDate.setHours(hours24, parseInt(minute), 0, 0);
-
-    const newRecordData = {
-      studentName: name,
-      grade: grade,
-      dismissalMethod: dismissalMethod,
-      timestamp: recordDate.getTime(),
-      message: aiMessage
-    };
-
+    const msg = await generateGoodbyeMessage(name, grade);
+    const timestamp = new Date();
+    timestamp.setHours(parseInt(hour) + 12, parseInt(minute), 0, 0);
     try {
-      await addDoc(collection(db, "dismissals"), newRecordData);
-      
-      setHasSubmitted(true); 
-      
-      showNotification(
-        "📢 하교 기록 저장됨",
-        `${name} 학생의 하교 정보가 서버에 저장되었습니다.`
-      );
-
-      setTimeout(() => {
-        setHasSubmitted(false);
-        setName(''); 
-      }, 2000);
-
-    } catch (error: any) {
-      console.error("데이터 저장 실패:", error);
-      if (error.code === 'permission-denied') {
-        alert("저장 실패: 데이터베이스 쓰기 권한이 없습니다. 선생님께 문의하세요.");
-      } else {
-        alert("데이터 저장 중 오류가 발생했습니다. 인터넷 연결을 확인해주세요.");
-      }
-    } finally {
-      setLoading(false);
-    }
+      await addDoc(collection(db, "dismissals"), { studentName: name, grade, dismissalMethod, timestamp: timestamp.getTime(), message: msg });
+      setHasSubmitted(true);
+      setTimeout(() => { setHasSubmitted(false); setName(''); }, 2000);
+    } catch (e) { alert("저장 실패"); }
+    finally { setLoading(false); }
   };
 
-  // --- Edit & Delete Actions (Teacher) ---
-
-  const handleDeleteClick = (e: React.MouseEvent, id: string, studentName: string) => {
-    e.stopPropagation(); 
-    setDeleteModal({ isOpen: true, id, name: studentName });
-  };
-
-  const confirmDelete = async (targetId: string) => {
+  const handleConfirmDelete = async () => {
+    if (!deleteModal.id) return;
     setIsDeleting(true);
     try {
-      await deleteDoc(doc(db, "dismissals", targetId));
-      setDeleteModal({ isOpen: false, id: null, name: '' });
-    } catch (error: any) {
-      console.error("삭제 실패:", error);
-      alert(`삭제 중 오류가 발생했습니다: ${error.message}`);
-    } finally {
-      setIsDeleting(false);
-    }
+      const coll = deleteModal.type === 'RECORD' ? 'dismissals' : 'students';
+      await deleteDoc(doc(db, coll, deleteModal.id));
+      setDeleteModal({ ...deleteModal, isOpen: false });
+    } catch (e) { alert("삭제 실패"); }
+    finally { setIsDeleting(false); }
   };
 
-  const startEditing = (record: DismissalRecord) => {
-    const date = new Date(record.timestamp);
-    let h = date.getHours();
-    
-    if (h > 12) h -= 12; 
-    
-    setEditingId(record.id);
-    setEditMethod(record.dismissalMethod);
-    
-    const hStr = h.toString();
-    setEditHour(HOURS.includes(hStr) ? hStr : '1');
-    
-    const m = date.getMinutes();
-    const mStr = Math.floor(m / 10) * 10;
-    const mStrFormatted = mStr === 0 ? '00' : mStr.toString();
-    setEditMinute(MINUTES.includes(mStrFormatted) ? mStrFormatted : '00');
-  };
-
-  const cancelEditing = () => {
-    setEditingId(null);
-  };
-
-  const saveEditing = async (record: DismissalRecord) => {
+  const handleAddStudent = async (gradeLevel: number) => {
+    const sName = newStudentName[gradeLevel]?.trim();
+    if (!sName) return;
     try {
-      const targetDate = new Date(record.timestamp);
-      
-      const selectedPmHour = parseInt(editHour, 10);
-      const hours24 = selectedPmHour + 12; 
-      const minutes = parseInt(editMinute, 10);
-
-      targetDate.setHours(hours24);
-      targetDate.setMinutes(minutes);
-      targetDate.setSeconds(0);
-      targetDate.setMilliseconds(0);
-
-      const recordRef = doc(db, "dismissals", record.id);
-      await updateDoc(recordRef, {
-        dismissalMethod: editMethod,
-        timestamp: targetDate.getTime()
-      });
-
-      alert("수정되었습니다.");
-      setEditingId(null);
-    } catch (error) {
-      console.error("수정 실패:", error);
-      alert("수정 저장 중 오류가 발생했습니다.");
-    }
+      await addDoc(collection(db, "students"), { name: sName, grade: gradeLevel });
+      setNewStudentName({ ...newStudentName, [gradeLevel]: '' });
+    } catch (e) { alert("학생 추가 실패"); }
   };
 
-  const handleExcelExport = () => {
-    if (typeof XLSX === 'undefined') {
-      alert('엑셀 라이브러리가 로드되지 않았습니다. 페이지를 새로고침 해주세요.');
-      return;
-    }
-
-    if (records.length === 0) {
-      alert('내보낼 기록이 없습니다.');
-      return;
-    }
-
-    const start = new Date(exportStartDate);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(exportEndDate);
-    end.setHours(23, 59, 59, 999);
-
-    const targetRecords = records.filter(r => {
-      const t = new Date(r.timestamp);
-      return t >= start && t <= end;
-    });
-
-    if (targetRecords.length === 0) {
-      alert('선택한 기간에 해당하는 기록이 없습니다.');
-      return;
-    }
-
-    targetRecords.sort((a, b) => b.timestamp - a.timestamp);
-
-    const excelData = targetRecords.map(r => ({
+  const handleExport = () => {
+    const start = new Date(exportStartDate); start.setHours(0,0,0,0);
+    const end = new Date(exportEndDate); end.setHours(23,59,59,999);
+    const filtered = records.filter(r => r.timestamp >= start.getTime() && r.timestamp <= end.getTime());
+    const data = filtered.map(r => ({
       '날짜': new Date(r.timestamp).toLocaleDateString('ko-KR'),
       '시간': new Date(r.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
       '학년': `${r.grade}학년`,
       '이름': r.studentName,
-      '하교방법': r.dismissalMethod,
-      '메시지': r.message
+      '하교방법': r.dismissalMethod
     }));
-
-    const ws = XLSX.utils.json_to_sheet(excelData);
+    const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "하교기록");
-
-    const wscols = [
-      {wch: 15}, 
-      {wch: 10}, 
-      {wch: 8},  
-      {wch: 10}, 
-      {wch: 15}, 
-      {wch: 40}, 
-    ];
-    ws['!cols'] = wscols;
-
-    XLSX.writeFile(wb, `하교기록_${exportStartDate}_${exportEndDate}.xlsx`);
+    XLSX.writeFile(wb, `화양초_하교기록_${exportStartDate}_${exportEndDate}.xlsx`);
   };
 
-  // --- Filtering & Calendar Logic ---
-  const filteredRecords = records.filter(r => 
-    r.studentName.includes(searchTerm)
+  const studentsByGrade = useMemo(() => {
+    const g: Record<number, Student[]> = {};
+    [1,2,3,4,5,6].forEach(i => g[i] = students.filter(s => s.grade === i));
+    return g;
+  }, [students]);
+
+  const filteredRecords = useMemo(() => 
+    records.filter(r => isSameDate(new Date(r.timestamp), selectedDate)), 
+  [records, selectedDate]);
+
+  const getMethodColor = (method: string) => {
+    if (method === '통학차') return 'text-red-500';
+    if (method === '에듀택시') return 'text-[#92400e]'; // 갈색 계열
+    return 'text-indigo-400';
+  };
+
+  const renderDashboard = () => (
+    <div className="space-y-8 animate-fade-in max-w-4xl mx-auto text-[0.95rem]">
+      {/* 관리 도구 섹션 */}
+      <section className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+        <div className="flex items-center gap-2 mb-6">
+          <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          <h4 className="font-black text-gray-800 text-base uppercase tracking-tight">관리 도구</h4>
+        </div>
+
+        <div className="bg-gray-50/50 p-5 rounded-3xl border border-gray-100">
+          <p className="text-sm font-bold text-gray-800 mb-4">데이터 내보내기 (Excel)</p>
+          <div className="flex flex-col md:flex-row gap-4 items-end">
+            <div className="flex-1 space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">시작일</label>
+              <input type="date" value={exportStartDate} onChange={e => setExportStartDate(e.target.value)} className="w-full p-3 bg-white border border-gray-200 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-50" />
+            </div>
+            <div className="flex-1 space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">종료일</label>
+              <input type="date" value={exportEndDate} onChange={e => setExportEndDate(e.target.value)} className="w-full p-3 bg-white border border-gray-200 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-50" />
+            </div>
+            <button onClick={handleExport} className="bg-[#10b981] text-white px-6 py-3.5 rounded-2xl font-black text-xs flex items-center justify-center gap-2 hover:bg-[#059669] transition-all shadow-lg shadow-emerald-100 min-w-[180px]">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              엑셀 다운로드
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* 캘린더 섹션 */}
+      <section className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+        <div className="flex justify-between items-center mb-8">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setCurrentCalendarMonth(new Date(currentCalendarMonth.getFullYear(), currentCalendarMonth.getMonth() - 1))} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </button>
+            <h4 className="text-xl font-black text-gray-900">{currentCalendarMonth.getFullYear()}년 {currentCalendarMonth.getMonth() + 1}월</h4>
+            <button onClick={() => setCurrentCalendarMonth(new Date(currentCalendarMonth.getFullYear(), currentCalendarMonth.getMonth() + 1))} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </button>
+          </div>
+          <p className="text-xs font-bold text-gray-400">선택된 날짜: <span className="text-indigo-600 font-black">{selectedDate.getFullYear()}. {selectedDate.getMonth()+1}. {selectedDate.getDate()}.</span></p>
+        </div>
+
+        <div className="grid grid-cols-7 gap-1.5 mb-2">
+          {['일','월','화','수','목','금','토'].map((d, i) => (
+            <div key={d} className={`text-center text-[10px] font-black uppercase tracking-wider mb-2 ${i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-gray-300'}`}>{d}</div>
+          ))}
+          {Array.from({ length: getFirstDayOfMonth(currentCalendarMonth.getFullYear(), currentCalendarMonth.getMonth()) }).map((_, i) => <div key={i}></div>)}
+          {Array.from({ length: getDaysInMonth(currentCalendarMonth.getFullYear(), currentCalendarMonth.getMonth()) }).map((_, i) => {
+            const d = i + 1;
+            const date = new Date(currentCalendarMonth.getFullYear(), currentCalendarMonth.getMonth(), d);
+            const active = isSameDate(date, selectedDate);
+            return (
+              <button key={d} onClick={() => setSelectedDate(date)} className={`aspect-[4/3] rounded-2xl flex items-center justify-center text-base font-black transition-all ${active ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'hover:bg-indigo-50 text-gray-700'}`}>
+                {d}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* 하교 현황 섹션 (첨부된 이미지 형태로 변경) */}
+      <section className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+        <div className="flex items-center gap-2 mb-6">
+          <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          <h4 className="font-black text-gray-800 text-base uppercase tracking-tight">{selectedDate.getMonth()+1}월 {selectedDate.getDate()}일 하교 현황</h4>
+        </div>
+
+        <div className="space-y-10">
+          {[1,2,3,4,5,6].map(g => (
+            <div key={g} className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
+                <h5 className="font-black text-gray-800 text-xs">{g}학년</h5>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {studentsByGrade[g]?.map(s => {
+                  const record = filteredRecords.find(r => r.studentName === s.name && r.grade === g);
+                  const isDone = !!record;
+                  return (
+                    <div key={s.id} className={`p-4 rounded-xl border transition-all flex items-center group relative ${isDone ? 'bg-indigo-50/50 border-indigo-100 shadow-sm' : 'bg-gray-50/50 border-transparent hover:bg-gray-100'}`}>
+                      {/* 왼쪽: 이름 및 하교 방법 */}
+                      <div className="flex flex-col flex-1">
+                        <p className={`font-black text-[14px] ${isDone ? 'text-indigo-900' : 'text-gray-400'}`}>{s.name}</p>
+                        <p className={`text-[10px] font-bold mt-0.5 ${isDone ? getMethodColor(record.dismissalMethod) : 'text-gray-300'}`}>
+                          {isDone ? record.dismissalMethod : '미하교'}
+                        </p>
+                      </div>
+
+                      {/* 중앙: 하교 시간 */}
+                      <div className="flex-1 text-center">
+                        <p className={`font-black text-[15px] ${isDone ? 'text-gray-900' : 'text-gray-200'}`}>
+                          {isDone ? new Date(record.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: true }).replace('AM', '오전').replace('PM', '오후') : '오후 00:00'}
+                        </p>
+                      </div>
+
+                      {/* 오른쪽: 액션 아이콘 */}
+                      <div className="flex items-center gap-1">
+                        {isDone && (
+                          <>
+                            <button className="p-1 text-gray-300 hover:text-indigo-500 transition-all">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            </button>
+                            <button onClick={() => setDeleteModal({ isOpen: true, type: 'RECORD', id: record.id, name: s.name })} className="p-1 text-gray-300 hover:text-red-500 transition-all">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
   );
 
-  const handlePrevMonth = () => {
-    setCurrentCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
-  };
-  
-  const handleNextMonth = () => {
-    setCurrentCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
-  };
-
-  const handlePrevLunchDate = () => {
-    setLunchDate(prev => new Date(prev.getFullYear(), prev.getMonth(), prev.getDate() - 1));
-  };
-
-  const handleNextLunchDate = () => {
-    setLunchDate(prev => new Date(prev.getFullYear(), prev.getMonth(), prev.getDate() + 1));
-  };
-
-  const generateCalendarDays = () => {
-    const year = currentCalendarMonth.getFullYear();
-    const month = currentCalendarMonth.getMonth();
-    const daysInMonth = getDaysInMonth(year, month);
-    const firstDay = getFirstDayOfMonth(year, month);
-    
-    const days = [];
-    for (let i = 0; i < firstDay; i++) {
-      days.push(<div key={`empty-${i}`} className="h-10"></div>);
-    }
-    for (let d = 1; d <= daysInMonth; d++) {
-      const date = new Date(year, month, d);
-      const isSelected = isSameDate(date, selectedDate);
-      const isToday = isSameDate(date, new Date());
-      
-      days.push(
-        <button
-          key={d}
-          type="button"
-          onClick={() => setSelectedDate(date)}
-          className={`h-10 w-10 rounded-full flex items-center justify-center text-sm font-medium transition-all
-            ${isSelected ? 'bg-indigo-600 text-white shadow-md' : 'hover:bg-indigo-50 text-gray-700'}
-            ${isToday && !isSelected ? 'border-2 border-indigo-400 font-bold' : ''}
-          `}
-        >
-          {d}
-        </button>
-      );
-    }
-    return days;
-  };
+  const renderRoster = () => (
+    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5 animate-fade-in max-w-4xl mx-auto">
+      {[1,2,3,4,5,6].map(g => (
+        <div key={g} className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
+          <div className="p-4 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
+            <h4 className="font-black text-gray-900 text-sm">{g}학년 명단</h4>
+            <span className="text-[10px] font-bold text-gray-400">{studentsByGrade[g]?.length || 0}명</span>
+          </div>
+          <div className="p-4 space-y-3 flex-1">
+            <div className="flex flex-wrap gap-1.5">
+              {studentsByGrade[g]?.map(s => (
+                <div key={s.id} className="flex items-center gap-1 bg-gray-50 border border-gray-100 pl-2.5 pr-1 py-0.5 rounded-full group">
+                  <span className="text-[11px] font-bold text-gray-700">{s.name}</span>
+                  <button onClick={() => setDeleteModal({ isOpen: true, type: 'STUDENT', id: s.id, name: s.name })} className="p-0.5 text-gray-300 hover:text-red-500 rounded-full hover:bg-white transition-all">
+                    <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="p-3 bg-white border-t border-gray-50 mt-auto">
+            <div className="flex gap-1.5">
+              <input type="text" placeholder="이름" value={newStudentName[g] || ''} onChange={e => setNewStudentName({...newStudentName, [g]: e.target.value})} onKeyDown={e => e.key === 'Enter' && handleAddStudent(g)} className="flex-1 bg-gray-50 border-none rounded-xl text-[10px] p-2.5 font-bold" />
+              <button onClick={() => handleAddStudent(g)} className="bg-indigo-600 text-white px-3 rounded-xl font-bold text-xs">추가</button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-800 font-sans pb-20">
-      <NotificationToast notifications={notifications} />
-      <AdminLoginModal 
-        isOpen={showAdminLogin} 
-        onClose={() => setShowAdminLogin(false)}
-        value={adminCodeInput}
-        onChange={setAdminCodeInput}
-        onSubmit={handleAdminLoginSubmit}
+    <div className="min-h-screen bg-[#fcfdff] text-gray-800 font-sans pb-20">
+      <AdminLoginModal isOpen={showAdminLogin} onClose={() => setShowAdminLogin(false)} value={adminCodeInput} onChange={setAdminCodeInput} onSubmit={handleAdminLogin} />
+      <DeleteConfirmModal 
+        isOpen={deleteModal.isOpen} 
+        onCancel={() => setDeleteModal({ ...deleteModal, isOpen: false })} 
+        onConfirm={handleConfirmDelete} 
+        title={`${deleteModal.type === 'RECORD' ? '기록' : '명단'} 삭제`} 
+        message={`'${deleteModal.name}' 학생의 ${deleteModal.type === 'RECORD' ? '하교 기록을' : '명단 정보를'} 정말 삭제하시겠습니까?`}
+        isDeleting={isDeleting}
       />
       
-      {/* Header / Role Switcher */}
-      <header className="bg-white shadow-sm sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">H</div>
-            <h1 className="text-xl font-bold text-gray-900">화양초등학교 하교시간 기록 앱</h1>
+      <header className="bg-white/80 backdrop-blur-md sticky top-0 z-40 border-b border-gray-100">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-indigo-600 rounded-2xl flex items-center justify-center text-white font-black text-xl shadow-lg">H</div>
+            <div className="flex flex-col"><h1 className="text-base font-black text-gray-900 tracking-tight leading-none">화양초 하교관리</h1></div>
           </div>
-          <div className="flex bg-gray-100 p-1 rounded-lg">
-            <button 
-              type="button"
-              onClick={() => handleRoleButtonClick('STUDENT')}
-              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${role === 'STUDENT' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              학생용
-            </button>
-            <button 
-              type="button"
-              onClick={() => handleRoleButtonClick('TEACHER')}
-              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${role === 'TEACHER' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              교사용
-            </button>
+          <div className="flex bg-gray-100 p-1 rounded-2xl">
+            <button onClick={() => setRole('STUDENT')} className={`px-5 py-2 text-xs font-bold rounded-xl transition-all ${role === 'STUDENT' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'}`}>학생용</button>
+            <button onClick={() => { setShowAdminLogin(true); setAdminCodeInput(''); }} className={`px-5 py-2 text-xs font-bold rounded-xl transition-all ${role === 'TEACHER' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'}`}>교사용</button>
           </div>
         </div>
       </header>
 
-      {/* DB Connection Error Banner */}
-      {dbError && (
-        <div className="bg-red-50 border-b border-red-200 p-4">
-          <div className="max-w-4xl mx-auto flex items-start gap-3">
-            <svg className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <div className="text-sm text-red-800 font-medium">
-              {dbError}
+      <main className="max-w-6xl mx-auto px-6 py-10">
+        {role === 'STUDENT' ? (
+          <div className="max-w-lg mx-auto space-y-8 animate-fade-in">
+            <div className="text-center space-y-2">
+              <p className="text-sm font-black text-indigo-600 bg-indigo-50 inline-block px-4 py-1.5 rounded-full">{new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}</p>
+              <h2 className="text-3xl font-black text-gray-900 tracking-tight">하교 시간 기록하기</h2>
             </div>
-          </div>
-        </div>
-      )}
-
-      <main className="max-w-4xl mx-auto px-4 py-8">
-        
-        {/* ============ STUDENT VIEW ============ */}
-        {role === 'STUDENT' && (
-          <div className="max-w-md mx-auto space-y-6">
-            <div className="text-center space-y-2 mb-8">
-              {/* Date Display */}
-              <p className="text-sm font-semibold text-indigo-600 bg-indigo-50 inline-block px-3 py-1 rounded-full mb-1">
-                {todayDate}
-              </p>
-              <h2 className="text-2xl font-bold text-gray-900">하교 시간 기록하기</h2>
-              <p className="text-gray-500">정보를 선택하고 제출하기 버튼을 눌러주세요.</p>
-            </div>
-
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-              <form onSubmit={handleDismissal} className="space-y-4">
-                {/* Row 1: Grade and Name */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">학년</label>
-                    <select 
-                      value={grade} onChange={(e) => setGrade(parseInt(e.target.value))}
-                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                    >
-                      {[1,2,3,4,5,6].map(g => <option key={g} value={g}>{g}학년</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">이름</label>
-                    <select 
-                      value={name} onChange={(e) => setName(e.target.value)}
-                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                    >
-                      <option value="">-- 이름 선택 --</option>
-                      {STUDENT_DATA[grade]?.map(studentName => (
-                        <option key={studentName} value={studentName}>{studentName}</option>
-                      ))}
-                    </select>
-                  </div>
+            
+            <form onSubmit={handleDismissalSubmit} className="bg-white p-8 rounded-3xl shadow-xl border border-indigo-50 space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-gray-400 mb-2 uppercase tracking-[0.2em] px-1">학년</label>
+                  <select value={grade} onChange={e => setGrade(Number(e.target.value))} className="w-full p-4 bg-gray-50 border-2 border-transparent rounded-2xl outline-none focus:border-indigo-100 font-bold">
+                    {[1,2,3,4,5,6].map(g => <option key={g} value={g}>{g}학년</option>)}
+                  </select>
                 </div>
-
-                {/* Row 2: Method and Time */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">하교 방법</label>
-                    <select 
-                      value={dismissalMethod} onChange={handleMethodChange}
-                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                    >
-                      {DISMISSAL_METHODS.map(m => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">하교 시간</label>
-                    <div className="w-full bg-gray-50 border border-gray-200 rounded-xl flex items-center overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-indigo-500 transition-all">
-                      <div className="pl-4 py-3 flex-shrink-0 flex items-center">
-                        <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                        </svg>
-                      </div>
-                      <div className="px-3 flex-shrink-0 flex items-center justify-center">
-                        <span className="text-sm font-bold text-gray-600">오후</span>
-                      </div>
-                      <div className="flex-1 flex items-center min-w-0">
-                        <div className="flex-1 relative min-w-0">
-                          <select 
-                            value={hour} 
-                            onChange={(e) => setHour(e.target.value)}
-                            className="w-full py-3 bg-transparent outline-none appearance-none text-center font-bold text-gray-800 min-w-0"
-                          >
-                            {HOURS.map(h => <option key={h} value={h}>{h}시</option>)}
-                          </select>
-                        </div>
-                        <div className="text-gray-400 font-bold flex-shrink-0 px-1">:</div>
-                        <div className="flex-1 relative min-w-0">
-                          <select 
-                            value={minute} 
-                            onChange={(e) => setMinute(e.target.value)}
-                            className="w-full py-3 bg-transparent outline-none appearance-none text-center font-bold text-gray-800 min-w-0"
-                          >
-                            {MINUTES.map(m => <option key={m} value={m}>{m}분</option>)}
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                <div>
+                  <label className="block text-[10px] font-black text-gray-400 mb-2 uppercase tracking-[0.2em] px-1">이름</label>
+                  <select value={name} onChange={e => setName(e.target.value)} required className="w-full p-4 bg-gray-50 border-2 border-transparent rounded-2xl outline-none focus:border-indigo-100 font-bold">
+                    <option value="">-- 선택 --</option>
+                    {studentsByGrade[grade]?.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                  </select>
                 </div>
+              </div>
 
-                <button 
-                  type="submit" 
-                  disabled={loading || !name || hasSubmitted}
-                  className={`w-full py-4 rounded-xl text-white font-bold text-lg shadow-lg transform transition-all 
-                    ${hasSubmitted 
-                      ? 'bg-green-500 scale-100' 
-                      : loading || !name 
-                        ? 'bg-indigo-300 cursor-not-allowed scale-100 shadow-none' 
-                        : 'bg-indigo-600 hover:bg-indigo-700 hover:shadow-indigo-200 active:scale-95'
-                    }`}
-                >
-                  {loading ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      처리중...
-                    </span>
-                  ) : hasSubmitted ? '제출완료 (2초 후 초기화)' : '제출하기'}
-                </button>
-              </form>
-            </div>
-
-            {/* Roster Status View */}
-             <div className="mt-8 animate-fade-in">
-               <div className="text-center mb-6">
-                 <h3 className="text-lg font-bold text-gray-900">오늘의 하교 현황</h3>
-                 <p className="text-gray-500 text-xs mt-1">이름이 보라색으로 칠해진 친구는 하교를 완료한 친구입니다.</p>
-               </div>
-
-               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-8">
-                 <div className="divide-y divide-gray-100">
-                   {[1, 2, 3, 4, 5, 6].map(g => (
-                     <div key={g} className="p-4">
-                       <h4 className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wider">{g}학년</h4>
-                       <div className="grid grid-cols-3 gap-2">
-                         {STUDENT_DATA[g].map(sName => {
-                           const isDone = records.some(r => r.studentName === sName && isSameDate(new Date(r.timestamp), new Date()));
-                           return (
-                             <div key={sName} className={`py-2 px-1 rounded-lg text-center text-sm border transition-colors ${isDone ? 'bg-indigo-100 border-indigo-200 text-indigo-700 font-bold shadow-sm' : 'bg-gray-50 border-gray-100 text-gray-400'}`}>
-                               {sName}
-                             </div>
-                           );
-                         })}
-                       </div>
-                     </div>
-                   ))}
-                 </div>
-               </div>
-             </div>
-
-             {/* Lunch Menu Section */}
-             <div className="mt-8 animate-fade-in pb-12">
-               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                 <div className="bg-indigo-600 p-4 flex justify-between items-center text-white">
-                   <div className="flex items-center gap-2">
-                     <span className="text-xl">🍱</span>
-                     <h3 className="font-bold">오늘의 급식 메뉴</h3>
-                   </div>
-                   <div className="flex items-center gap-3">
-                     <button 
-                       onClick={handlePrevLunchDate}
-                       className="w-8 h-8 rounded-full bg-white bg-opacity-20 flex items-center justify-center hover:bg-opacity-30 transition-all"
-                     >
-                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
-                     </button>
-                     <span className="text-sm font-medium">
-                       {lunchDate.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
-                     </span>
-                     <button 
-                       onClick={handleNextLunchDate}
-                       className="w-8 h-8 rounded-full bg-white bg-opacity-20 flex items-center justify-center hover:bg-opacity-30 transition-all"
-                     >
-                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
-                     </button>
-                   </div>
-                 </div>
-
-                 <div className="p-6">
-                   {lunchLoading ? (
-                     <div className="py-8 flex flex-col items-center justify-center space-y-4">
-                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-                       <p className="text-gray-500 text-sm">급식 정보를 검색하고 있어요...</p>
-                     </div>
-                   ) : lunchError ? (
-                     <div className="py-8 text-center">
-                       <p className="text-red-500 text-sm mb-2">❌ 정보를 불러오지 못했습니다.</p>
-                       <button 
-                         onClick={() => setLunchDate(new Date(lunchDate))}
-                         className="text-indigo-600 text-xs font-bold underline"
-                       >
-                         다시 시도하기
-                       </button>
-                     </div>
-                   ) : lunchInfo ? (
-                     <div className="space-y-4">
-                       <div className="text-gray-700 whitespace-pre-wrap leading-relaxed text-sm bg-gray-50 p-4 rounded-xl border border-gray-100">
-                         {lunchInfo.menuText}
-                       </div>
-                       
-                       {lunchInfo.sources && lunchInfo.sources.length > 0 && (
-                         <div className="pt-4 border-t border-gray-100">
-                           <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">정보 출처</h4>
-                           <div className="flex flex-wrap gap-2">
-                             {lunchInfo.sources.map((source, idx) => (
-                               <a 
-                                 key={idx} 
-                                 href={source.uri} 
-                                 target="_blank" 
-                                 rel="noopener noreferrer"
-                                 className="text-[10px] bg-gray-100 text-gray-500 px-2 py-1 rounded-md hover:bg-indigo-50 hover:text-indigo-600 transition-colors flex items-center gap-1"
-                               >
-                                 <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-                                 {source.title.length > 15 ? source.title.substring(0, 15) + '...' : source.title}
-                               </a>
-                             ))}
-                           </div>
-                         </div>
-                       )}
-                     </div>
-                   ) : (
-                     <p className="text-center text-gray-400 text-sm py-8">표시할 급식 정보가 없습니다.</p>
-                   )}
-                 </div>
-               </div>
-             </div>
-          </div>
-        )}
-
-        {/* ============ TEACHER VIEW ============ */}
-        {role === 'TEACHER' && (
-          <div className="space-y-8">
-            <div className="flex flex-col md:flex-row justify-between items-end gap-4">
+              {/* 하교 시간 입력란 복구 */}
               <div>
-                <h2 className="text-2xl font-bold text-gray-900">하교 관리자 대시보드</h2>
-                <p className="text-gray-500">전교생 하교 현황을 확인하고 데이터를 관리하세요.</p>
-              </div>
-            </div>
-
-            {/* Management Tools (Export) */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  <h3 className="text-lg font-bold text-gray-800">관리 도구</h3>
+                <label className="block text-[10px] font-black text-gray-400 mb-2 uppercase tracking-[0.2em] px-1">하교 시간</label>
+                <div className="flex gap-2">
+                  <select value={hour} onChange={e => setHour(e.target.value)} className="flex-1 p-4 bg-gray-50 border-2 border-transparent rounded-2xl outline-none focus:border-indigo-100 font-bold">
+                    {HOURS.map(h => <option key={h} value={h}>오후 {h}시</option>)}
+                  </select>
+                  <select value={minute} onChange={e => setMinute(e.target.value)} className="flex-1 p-4 bg-gray-50 border-2 border-transparent rounded-2xl outline-none focus:border-indigo-100 font-bold">
+                    {MINUTES.map(m => <option key={m} value={m}>{m}분</option>)}
+                  </select>
                 </div>
               </div>
-              
-              <div className="space-y-4">
-                {/* Export Section */}
-                <div className="bg-gray-50 p-4 rounded-xl">
-                  <h4 className="text-sm font-bold text-gray-700 mb-3">데이터 내보내기 (Excel)</h4>
-                  <div className="flex flex-col md:flex-row gap-4 items-end">
-                    <div className="flex-1 w-full">
-                      <label className="block text-xs font-medium text-gray-500 mb-1">시작일</label>
-                      <input 
-                        type="date" 
-                        value={exportStartDate} 
-                        onChange={e => setExportStartDate(e.target.value)}
-                        className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500"
-                      />
-                    </div>
-                    <div className="flex-1 w-full">
-                      <label className="block text-xs font-medium text-gray-500 mb-1">종료일</label>
-                      <input 
-                        type="date" 
-                        value={exportEndDate} 
-                        onChange={e => setExportEndDate(e.target.value)}
-                        className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500"
-                      />
-                    </div>
-                    <button 
-                      type="button"
-                      onClick={handleExcelExport}
-                      className="w-full md:w-auto px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                      엑셀 다운로드
+
+              <div>
+                <label className="block text-[10px] font-black text-gray-400 mb-2 uppercase tracking-[0.2em] px-1">하교 방법</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {DISMISSAL_METHODS.map(m => (
+                    <button key={m} type="button" onClick={() => setDismissalMethod(m)} className={`p-3 rounded-xl text-[11px] font-bold transition-all border-2 ${dismissalMethod === m ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-100' : 'bg-white text-gray-500 border-gray-100'}`}>
+                      {m}
                     </button>
-                  </div>
+                  ))}
                 </div>
               </div>
-            </div>
+              <button disabled={loading || !name || hasSubmitted} className={`w-full py-5 rounded-3xl text-white font-black text-xl shadow-2xl transition-all ${hasSubmitted ? 'bg-emerald-500 shadow-emerald-100' : loading || !name ? 'bg-gray-300 shadow-none' : 'bg-indigo-600 shadow-indigo-100 hover:bg-indigo-700'}`}>
+                {loading ? '기록 중...' : hasSubmitted ? '✓ 기록 완료' : '제출하기'}
+              </button>
+            </form>
 
-            {/* Calendar Widget */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-4">
-                  <button type="button" onClick={handlePrevMonth} className="p-1 hover:bg-gray-100 rounded-full text-gray-500">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
-                  </button>
-                  <h3 className="text-lg font-bold text-gray-800">
-                    {currentCalendarMonth.getFullYear()}년 {currentCalendarMonth.getMonth() + 1}월
-                  </h3>
-                  <button type="button" onClick={handleNextMonth} className="p-1 hover:bg-gray-100 rounded-full text-gray-500">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
-                  </button>
-                </div>
-                <div className="text-sm text-gray-500">
-                  선택된 날짜: <span className="text-indigo-600 font-bold">{selectedDate.toLocaleDateString('ko-KR')}</span>
-                </div>
+            <div className="bg-white rounded-[2.5rem] shadow-xl border border-gray-100 overflow-hidden">
+              <div className="p-6 bg-gray-50 border-b border-gray-100 font-black text-gray-700 text-sm flex justify-between items-center">
+                <span>오늘의 하교 현황</span>
               </div>
-              <div className="grid grid-cols-7 gap-1 text-center mb-2">
-                {['일', '월', '화', '수', '목', '금', '토'].map(day => (
-                  <div key={day} className="text-xs font-medium text-gray-400 py-1">{day}</div>
+              <div className="divide-y divide-gray-50">
+                {[1,2,3,4,5,6].map(g => (
+                  <div key={g} className="p-6">
+                    <h4 className="text-[10px] font-black text-gray-400 mb-4 uppercase tracking-[0.2em]">{g}학년</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {studentsByGrade[g]?.map(s => {
+                        const isDone = records.some(r => r.studentName === s.name && r.grade === g && isSameDate(new Date(r.timestamp), new Date()));
+                        return (
+                          <span key={s.id} className={`px-4 py-2 rounded-2xl text-[13px] font-bold transition-all ${isDone ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'bg-gray-100 text-gray-300'}`}>
+                            {s.name}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
                 ))}
               </div>
-              <div className="grid grid-cols-7 gap-1 place-items-center">
-                {generateCalendarDays()}
-              </div>
             </div>
 
-            {/* Daily Dismissal Report */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-               <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-                 <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                   <svg className="w-5 h-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                   </svg>
-                   {selectedDate.getMonth() + 1}월 {selectedDate.getDate()}일 하교 현황
-                 </h3>
+            <div className="bg-indigo-600 rounded-[2.5rem] shadow-2xl p-8 text-white relative overflow-hidden">
+               <div className="flex justify-between items-center mb-6">
+                 <h3 className="text-xl font-black">🍱 오늘의 학교 급식</h3>
+                 <button onClick={() => loadLunch(true)} disabled={lunchLoading} className={`p-2 bg-white/10 rounded-xl ${lunchLoading ? 'animate-spin' : ''}`}>↻</button>
                </div>
                
-               <div className="divide-y divide-gray-100">
-                 {[1, 2, 3, 4, 5, 6].map(gradeLevel => (
-                   <div key={gradeLevel} className="p-6">
-                     <h4 className="text-sm font-bold text-gray-500 mb-4 flex items-center gap-2">
-                       <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-                       {gradeLevel}학년
-                     </h4>
-                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                       {STUDENT_DATA[gradeLevel].map(studentName => {
-                         const record = records.find(r => 
-                           r.studentName === studentName && 
-                           r.grade === gradeLevel &&
-                           isSameDate(new Date(r.timestamp), selectedDate)
-                         );
+               <div className="flex gap-4 items-center mb-6 bg-black/10 p-2 rounded-2xl border border-white/5">
+                 <button onClick={() => { const d = new Date(lunchDate); d.setDate(d.getDate()-1); setLunchDate(d); }} className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center font-black transition-colors hover:bg-white/20">◀</button>
+                 <div className="flex-1 text-center">
+                    <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest">{lunchDate.getFullYear()}</div>
+                    <div className="text-lg font-black">{lunchDate.getMonth() + 1}월 {lunchDate.getDate()}일 ({['일','월','화','수','목','금','토'][lunchDate.getDay()]})</div>
+                 </div>
+                 <button onClick={() => { const d = new Date(lunchDate); d.setDate(d.getDate()+1); setLunchDate(d); }} className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center font-black transition-colors hover:bg-white/20">▶</button>
+               </div>
 
-                         if (record) {
-                           const isEditing = editingId === record.id;
-                           
-                           return (
-                             <div key={studentName} className={`rounded-lg p-3 border transition-colors group ${isEditing ? 'bg-white border-indigo-400 ring-2 ring-indigo-100' : 'bg-indigo-50 border-indigo-100'}`}>
-                               {isEditing ? (
-                                 <div className="space-y-2">
-                                   <div className="flex justify-between items-center mb-2">
-                                      <span className="font-bold text-gray-900">{studentName}</span>
-                                      <span className="text-xs text-indigo-500 font-bold">수정 중...</span>
-                                   </div>
-                                   <select 
-                                     value={editMethod} 
-                                     onChange={(e) => setEditMethod(e.target.value)}
-                                     className="w-full p-1.5 text-xs border rounded mb-1 bg-white"
-                                   >
-                                     {DISMISSAL_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
-                                   </select>
-                                   <div className="flex gap-1 items-center">
-                                      <select value={editHour} onChange={(e) => setEditHour(e.target.value)} className="p-1 text-xs border rounded bg-white">
-                                        {HOURS.map(h => <option key={h} value={h}>{h}</option>)}
-                                      </select>
-                                      <span className="text-gray-400">:</span>
-                                      <select value={editMinute} onChange={(e) => setEditMinute(e.target.value)} className="p-1 text-xs border rounded bg-white">
-                                        {MINUTES.map(m => <option key={m} value={m}>{m}</option>)}
-                                      </select>
-                                   </div>
-                                   <div className="flex gap-2 mt-2 pt-2 border-t border-gray-100">
-                                     <button type="button" onClick={() => saveEditing(record)} className="flex-1 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700">저장</button>
-                                     <button type="button" onClick={cancelEditing} className="flex-1 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300">취소</button>
-                                   </div>
-                                 </div>
-                               ) : (
-                                 <div className="flex justify-between items-center">
-                                   <div>
-                                     <div className="font-bold text-gray-900">{studentName}</div>
-                                     <div className={`text-xs mt-1 ${
-                                        record.dismissalMethod === '에듀택시' 
-                                          ? 'text-[#9F814F]' 
-                                          : record.dismissalMethod === '통학차' 
-                                            ? 'text-red-600 font-bold' 
-                                            : 'text-indigo-600'
-                                      }`}>
-                                       {record.dismissalMethod}
-                                     </div>
-                                   </div>
-                                   <div className="text-right flex items-center gap-3">
-                                     <div className="text-lg font-bold text-gray-800">
-                                       {new Date(record.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
-                                     </div>
-                                     <div className="flex gap-1">
-                                        <button
-                                          type="button"
-                                          onClick={() => startEditing(record)}
-                                          className="p-1.5 text-gray-300 hover:text-indigo-500 hover:bg-indigo-50 rounded-md transition-colors relative z-10"
-                                          title="기록 수정"
-                                        >
-                                          <svg className="w-4 h-4 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                          </svg>
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={(e) => handleDeleteClick(e, record.id, record.studentName)}
-                                          className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors relative z-20 cursor-pointer"
-                                          title="기록 삭제"
-                                        >
-                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                          </svg>
-                                        </button>
-                                     </div>
-                                   </div>
-                                 </div>
-                               )}
-                             </div>
-                           );
-                         } else {
-                           return (
-                             <div key={studentName} className="bg-gray-50 rounded-lg p-3 border border-gray-100 flex justify-between items-center opacity-75">
-                               <div>
-                                 <div className="font-medium text-gray-500">{studentName}</div>
-                                 <div className="text-xs text-gray-400 mt-1">-</div>
-                               </div>
-                               <div className="text-xs text-gray-400 bg-gray-200 px-2 py-1 rounded">
-                                 미하교
-                               </div>
-                             </div>
-                           );
-                         }
-                       })}
-                     </div>
-                   </div>
-                 ))}
+               <div className="bg-white/10 backdrop-blur-xl p-6 rounded-3xl border border-white/10 min-h-[160px] text-sm leading-relaxed whitespace-pre-wrap">
+                  {lunchLoading ? <div className="animate-pulse space-y-3"><div className="h-4 bg-white/20 rounded w-3/4"></div><div className="h-4 bg-white/20 rounded w-full"></div></div> : lunchInfo?.menuText}
                </div>
             </div>
+          </div>
+        ) : (
+          <div className="space-y-6 max-w-4xl mx-auto">
+            <div className="flex flex-col gap-1 mb-6">
+              <h2 className="text-3xl font-black text-gray-900 tracking-tight">하교 관리자 대시보드</h2>
+              <p className="text-gray-400 font-bold text-xs">전교생 하교 현황을 확인하고 데이터를 관리하세요.</p>
+            </div>
+            
+            <div className="flex bg-white p-1 rounded-2xl shadow-sm border border-gray-100 w-fit mb-8">
+              <button onClick={() => setTeacherView('DASHBOARD')} className={`px-6 py-2.5 rounded-xl text-xs font-black transition-all ${teacherView === 'DASHBOARD' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'text-gray-400'}`}>대시보드</button>
+              <button onClick={() => setTeacherView('ROSTER')} className={`px-6 py-2.5 rounded-xl text-xs font-black transition-all ${teacherView === 'ROSTER' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'text-gray-400'}`}>명단 관리</button>
+            </div>
 
+            {teacherView === 'DASHBOARD' ? renderDashboard() : renderRoster()}
           </div>
         )}
       </main>
-
-      {/* Delete Confirmation Modal */}
-      {deleteModal.isOpen && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center px-4 animate-fade-in" 
-          onClick={() => !isDeleting && setDeleteModal(prev => ({...prev, isOpen: false}))}
-        >
-          <div 
-            className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm transform transition-all scale-100" 
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-start gap-4 mb-4">
-              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-                {isDeleting ? (
-                   <svg className="animate-spin h-6 w-6 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                   </svg>
-                ) : (
-                  <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                )}
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-gray-900">기록 삭제 확인</h3>
-                <p className="text-gray-600 text-sm mt-1">
-                  <span className="font-bold text-indigo-600">{deleteModal.name}</span> 학생의 하교 기록을 정말로 삭제하시겠습니까?
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-2 mt-2">
-              <button 
-                type="button"
-                disabled={isDeleting}
-                onClick={() => setDeleteModal(prev => ({...prev, isOpen: false}))}
-                className="flex-1 py-3 text-gray-600 font-medium bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors disabled:opacity-50"
-              >
-                취소
-              </button>
-              <button 
-                type="button"
-                disabled={isDeleting || !deleteModal.id}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (deleteModal.id) confirmDelete(deleteModal.id);
-                }}
-                className="flex-1 py-3 text-white font-bold bg-red-500 rounded-xl hover:bg-red-600 shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center"
-              >
-                {isDeleting ? '삭제 중...' : '삭제하기'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
