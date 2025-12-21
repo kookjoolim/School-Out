@@ -221,69 +221,79 @@ function App() {
 
   const renderDashboard = () => (
     <div className="space-y-8 animate-fade-in max-w-4xl mx-auto text-[0.95rem]">
-      {/* 관리 도구 섹션 */}
+      {/* 캘린더와 데이터 도구 통합 섹션 */}
       <section className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
-        <div className="flex items-center gap-2 mb-6">
-          <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        <div className="flex items-center gap-2 mb-8">
+          <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          <h4 className="font-black text-gray-800 text-base uppercase tracking-tight">관리 도구</h4>
+          <h4 className="font-black text-gray-800 text-base uppercase tracking-tight">데이터 및 일정 관리</h4>
         </div>
 
-        <div className="bg-gray-50/50 p-5 rounded-3xl border border-gray-100">
-          <p className="text-sm font-bold text-gray-800 mb-4">데이터 내보내기 (Excel)</p>
-          <div className="flex flex-col md:flex-row gap-4 items-end">
-            <div className="flex-1 space-y-2">
-              <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">시작일</label>
-              <input type="date" value={exportStartDate} onChange={e => setExportStartDate(e.target.value)} className="w-full p-3 bg-white border border-gray-200 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-50" />
+        <div className="flex flex-col lg:flex-row gap-8">
+          {/* 왼쪽: 캘린더 */}
+          <div className="flex-1">
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center gap-4">
+                <button onClick={() => setCurrentCalendarMonth(new Date(currentCalendarMonth.getFullYear(), currentCalendarMonth.getMonth() - 1))} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </button>
+                <h4 className="text-lg font-black text-gray-900">{currentCalendarMonth.getFullYear()}년 {currentCalendarMonth.getMonth() + 1}월</h4>
+                <button onClick={() => setCurrentCalendarMonth(new Date(currentCalendarMonth.getFullYear(), currentCalendarMonth.getMonth() + 1))} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </button>
+              </div>
             </div>
-            <div className="flex-1 space-y-2">
-              <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">종료일</label>
-              <input type="date" value={exportEndDate} onChange={e => setExportEndDate(e.target.value)} className="w-full p-3 bg-white border border-gray-200 rounded-2xl text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-50" />
+
+            <div className="grid grid-cols-7 gap-1 mb-2">
+              {['일','월','화','수','목','금','토'].map((d, i) => (
+                <div key={d} className={`text-center text-[10px] font-black uppercase tracking-wider mb-2 ${i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-gray-300'}`}>{d}</div>
+              ))}
+              {Array.from({ length: getFirstDayOfMonth(currentCalendarMonth.getFullYear(), currentCalendarMonth.getMonth()) }).map((_, i) => <div key={i}></div>)}
+              {Array.from({ length: getDaysInMonth(currentCalendarMonth.getFullYear(), currentCalendarMonth.getMonth()) }).map((_, i) => {
+                const d = i + 1;
+                const date = new Date(currentCalendarMonth.getFullYear(), currentCalendarMonth.getMonth(), d);
+                const active = isSameDate(date, selectedDate);
+                return (
+                  <button key={d} onClick={() => setSelectedDate(date)} className={`aspect-[4/3] rounded-2xl flex items-center justify-center text-sm font-black transition-all ${active ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'hover:bg-indigo-50 text-gray-700'}`}>
+                    {d}
+                  </button>
+                );
+              })}
             </div>
-            <button onClick={handleExport} className="bg-[#10b981] text-white px-6 py-3.5 rounded-2xl font-black text-xs flex items-center justify-center gap-2 hover:bg-[#059669] transition-all shadow-lg shadow-emerald-100 min-w-[180px]">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              엑셀 다운로드
-            </button>
+          </div>
+
+          {/* 오른쪽: 내보내기 도구 */}
+          <div className="lg:w-80 space-y-4 pt-4 border-t lg:border-t-0 lg:border-l lg:pl-8 border-gray-100">
+            <div className="bg-gray-50/50 p-5 rounded-3xl border border-gray-100">
+              <div className="flex items-center gap-2 mb-4">
+                <svg className="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                <p className="text-sm font-bold text-gray-800">엑셀 내려받기</p>
+              </div>
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">시작일</label>
+                  <input type="date" value={exportStartDate} onChange={e => setExportStartDate(e.target.value)} className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-50" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">종료일</label>
+                  <input type="date" value={exportEndDate} onChange={e => setExportEndDate(e.target.value)} className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-50" />
+                </div>
+                <button onClick={handleExport} className="w-full bg-[#10b981] text-white py-3 rounded-xl font-black text-xs hover:bg-[#059669] transition-all shadow-lg shadow-emerald-100 mt-2">
+                  기록 추출하기
+                </button>
+              </div>
+            </div>
+            <div className="px-2">
+              <p className="text-[10px] text-gray-400 font-medium leading-relaxed">
+                * 선택된 날짜(<span className="text-indigo-600 font-bold">{selectedDate.toLocaleDateString()}</span>)의 하교 현황이 아래에 표시됩니다.
+              </p>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* 캘린더 섹션 */}
-      <section className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
-        <div className="flex justify-between items-center mb-8">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setCurrentCalendarMonth(new Date(currentCalendarMonth.getFullYear(), currentCalendarMonth.getMonth() - 1))} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </button>
-            <h4 className="text-xl font-black text-gray-900">{currentCalendarMonth.getFullYear()}년 {currentCalendarMonth.getMonth() + 1}월</h4>
-            <button onClick={() => setCurrentCalendarMonth(new Date(currentCalendarMonth.getFullYear(), currentCalendarMonth.getMonth() + 1))} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </button>
-          </div>
-          <p className="text-xs font-bold text-gray-400">선택된 날짜: <span className="text-indigo-600 font-black">{selectedDate.getFullYear()}. {selectedDate.getMonth()+1}. {selectedDate.getDate()}.</span></p>
-        </div>
-
-        <div className="grid grid-cols-7 gap-1.5 mb-2">
-          {['일','월','화','수','목','금','토'].map((d, i) => (
-            <div key={d} className={`text-center text-[10px] font-black uppercase tracking-wider mb-2 ${i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-gray-300'}`}>{d}</div>
-          ))}
-          {Array.from({ length: getFirstDayOfMonth(currentCalendarMonth.getFullYear(), currentCalendarMonth.getMonth()) }).map((_, i) => <div key={i}></div>)}
-          {Array.from({ length: getDaysInMonth(currentCalendarMonth.getFullYear(), currentCalendarMonth.getMonth()) }).map((_, i) => {
-            const d = i + 1;
-            const date = new Date(currentCalendarMonth.getFullYear(), currentCalendarMonth.getMonth(), d);
-            const active = isSameDate(date, selectedDate);
-            return (
-              <button key={d} onClick={() => setSelectedDate(date)} className={`aspect-[4/3] rounded-2xl flex items-center justify-center text-base font-black transition-all ${active ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'hover:bg-indigo-50 text-gray-700'}`}>
-                {d}
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* 하교 현황 섹션 (첨부된 이미지 형태로 변경) */}
+      {/* 하교 현황 섹션 (한 줄에 2명씩 배치) */}
       <section className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
         <div className="flex items-center gap-2 mb-6">
           <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -297,36 +307,37 @@ function App() {
                 <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
                 <h5 className="font-black text-gray-800 text-xs">{g}학년</h5>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {/* grid-cols-2 로 수정하여 한 줄에 2명씩 나오도록 설정 */}
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                 {studentsByGrade[g]?.map(s => {
                   const record = filteredRecords.find(r => r.studentName === s.name && r.grade === g);
                   const isDone = !!record;
                   return (
-                    <div key={s.id} className={`p-4 rounded-xl border transition-all flex items-center group relative ${isDone ? 'bg-indigo-50/50 border-indigo-100 shadow-sm' : 'bg-gray-50/50 border-transparent hover:bg-gray-100'}`}>
+                    <div key={s.id} className={`p-3 md:p-4 rounded-xl border transition-all flex items-center group relative ${isDone ? 'bg-indigo-50/50 border-indigo-100 shadow-sm' : 'bg-gray-50/50 border-transparent hover:bg-gray-100'}`}>
                       {/* 왼쪽: 이름 및 하교 방법 */}
-                      <div className="flex flex-col flex-1">
-                        <p className={`font-black text-[14px] ${isDone ? 'text-indigo-900' : 'text-gray-400'}`}>{s.name}</p>
-                        <p className={`text-[10px] font-bold mt-0.5 ${isDone ? getMethodColor(record.dismissalMethod) : 'text-gray-300'}`}>
+                      <div className="flex flex-col flex-1 min-w-0">
+                        <p className={`font-black text-[13px] md:text-[14px] truncate ${isDone ? 'text-indigo-900' : 'text-gray-400'}`}>{s.name}</p>
+                        <p className={`text-[9px] md:text-[10px] font-bold mt-0.5 truncate ${isDone ? getMethodColor(record.dismissalMethod) : 'text-gray-300'}`}>
                           {isDone ? record.dismissalMethod : '미하교'}
                         </p>
                       </div>
 
                       {/* 중앙: 하교 시간 */}
-                      <div className="flex-1 text-center">
-                        <p className={`font-black text-[15px] ${isDone ? 'text-gray-900' : 'text-gray-200'}`}>
+                      <div className="flex-1 text-center px-1">
+                        <p className={`font-black text-[13px] md:text-[15px] whitespace-nowrap ${isDone ? 'text-gray-900' : 'text-gray-200'}`}>
                           {isDone ? new Date(record.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: true }).replace('AM', '오전').replace('PM', '오후') : '오후 00:00'}
                         </p>
                       </div>
 
                       {/* 오른쪽: 액션 아이콘 */}
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-0.5 md:gap-1">
                         {isDone && (
                           <>
                             <button className="p-1 text-gray-300 hover:text-indigo-500 transition-all">
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                              <svg className="w-3 md:w-3.5 h-3 md:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                             </button>
                             <button onClick={() => setDeleteModal({ isOpen: true, type: 'RECORD', id: record.id, name: s.name })} className="p-1 text-gray-300 hover:text-red-500 transition-all">
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                              <svg className="w-3 md:w-3.5 h-3 md:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                             </button>
                           </>
                         )}
