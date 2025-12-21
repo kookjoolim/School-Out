@@ -2,12 +2,19 @@ export interface DismissalRecord {
   id: string;
   studentName: string;
   grade: number;
-  dismissalMethod: string; // e.g., 'School Bus', 'Parent Car'
-  timestamp: number; // Unix timestamp based on user input time
-  message: string; // AI generated message
+  dismissalMethod: string;
+  timestamp: number;
+  message: string;
+}
+
+export interface Student {
+  id: string;
+  name: string;
+  grade: number;
 }
 
 export type UserRole = 'STUDENT' | 'TEACHER';
+export type TeacherView = 'DASHBOARD' | 'ROSTER';
 
 export interface Notification {
   id: string;
