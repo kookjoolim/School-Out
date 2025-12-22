@@ -225,7 +225,7 @@ function App() {
       <section className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
         <div className="flex items-center gap-2 mb-8">
           <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2v12a2 2 0 002 2z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
           <h4 className="font-black text-gray-800 text-base uppercase tracking-tight">데이터 및 일정 관리</h4>
         </div>
@@ -293,7 +293,7 @@ function App() {
         </div>
       </section>
 
-      {/* 하교 현황 섹션 (한 줄에 2명씩 배치) */}
+      {/* 하교 현황 섹션 (모바일에서 한 줄에 1명씩 배치하도록 수정) */}
       <section className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
         <div className="flex items-center gap-2 mb-6">
           <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -307,37 +307,37 @@ function App() {
                 <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
                 <h5 className="font-black text-gray-800 text-xs">{g}학년</h5>
               </div>
-              {/* grid-cols-2 로 수정하여 한 줄에 2명씩 나오도록 설정 */}
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+              {/* grid-cols-1로 변경하여 모바일에서 한 줄에 한 명씩 나오도록 수정 */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
                 {studentsByGrade[g]?.map(s => {
                   const record = filteredRecords.find(r => r.studentName === s.name && r.grade === g);
                   const isDone = !!record;
                   return (
-                    <div key={s.id} className={`p-3 md:p-4 rounded-xl border transition-all flex items-center group relative ${isDone ? 'bg-indigo-50/50 border-indigo-100 shadow-sm' : 'bg-gray-50/50 border-transparent hover:bg-gray-100'}`}>
+                    <div key={s.id} className={`p-4 rounded-xl border transition-all flex items-center group relative ${isDone ? 'bg-indigo-50/50 border-indigo-100 shadow-sm' : 'bg-gray-50/50 border-transparent hover:bg-gray-100'}`}>
                       {/* 왼쪽: 이름 및 하교 방법 */}
-                      <div className="flex flex-col flex-1 min-w-0">
-                        <p className={`font-black text-[13px] md:text-[14px] truncate ${isDone ? 'text-indigo-900' : 'text-gray-400'}`}>{s.name}</p>
-                        <p className={`text-[9px] md:text-[10px] font-bold mt-0.5 truncate ${isDone ? getMethodColor(record.dismissalMethod) : 'text-gray-300'}`}>
+                      <div className="flex flex-col flex-[1.5] min-w-0">
+                        <p className={`font-black text-[14px] md:text-[15px] ${isDone ? 'text-indigo-900' : 'text-gray-400'}`}>{s.name}</p>
+                        <p className={`text-[10px] md:text-[11px] font-bold mt-0.5 ${isDone ? getMethodColor(record.dismissalMethod) : 'text-gray-300'}`}>
                           {isDone ? record.dismissalMethod : '미하교'}
                         </p>
                       </div>
 
                       {/* 중앙: 하교 시간 */}
                       <div className="flex-1 text-center px-1">
-                        <p className={`font-black text-[13px] md:text-[15px] whitespace-nowrap ${isDone ? 'text-gray-900' : 'text-gray-200'}`}>
+                        <p className={`font-black text-[14px] md:text-[16px] whitespace-nowrap ${isDone ? 'text-gray-900' : 'text-gray-200'}`}>
                           {isDone ? new Date(record.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: true }).replace('AM', '오전').replace('PM', '오후') : '오후 00:00'}
                         </p>
                       </div>
 
                       {/* 오른쪽: 액션 아이콘 */}
-                      <div className="flex items-center gap-0.5 md:gap-1">
+                      <div className="flex items-center gap-1 flex-shrink-0">
                         {isDone && (
                           <>
-                            <button className="p-1 text-gray-300 hover:text-indigo-500 transition-all">
-                              <svg className="w-3 md:w-3.5 h-3 md:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            <button className="p-1.5 text-gray-300 hover:text-indigo-500 transition-all">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                             </button>
-                            <button onClick={() => setDeleteModal({ isOpen: true, type: 'RECORD', id: record.id, name: s.name })} className="p-1 text-gray-300 hover:text-red-500 transition-all">
-                              <svg className="w-3 md:w-3.5 h-3 md:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            <button onClick={() => setDeleteModal({ isOpen: true, type: 'RECORD', id: record.id, name: s.name })} className="p-1.5 text-gray-300 hover:text-red-500 transition-all">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                             </button>
                           </>
                         )}
