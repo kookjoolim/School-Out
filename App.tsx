@@ -9,7 +9,9 @@ import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, writeBa
 declare const XLSX: any;
 
 // --- Default Data for Seeding ---
-const INITIAL_STUDENTS: Omit<Student, 'id'>[] = [
+const INITIAL_STUDENTS: Omit<Student, 'id'>[] = [];
+
+const RECENT_GRADUATE_STUDENTS = [
   { grade: 1, name: '김건우' }, { grade: 1, name: '김하설' }, { grade: 1, name: '서아인' },
   { grade: 2, name: '김태준' }, { grade: 2, name: '윤재성' }, { grade: 2, name: '윤지수' }, { grade: 2, name: '양혜린' },
   { grade: 3, name: '김온유' }, { grade: 3, name: '박소윤' }, { grade: 3, name: '서유인' },
@@ -143,7 +145,23 @@ function App() {
         }
       } else {
         const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Student));
-        setStudents(list.sort((a, b) => a.grade === b.grade ? a.name.localeCompare(b.name, 'ko-KR') : a.grade - b.grade));
+        
+        // Detect and automatically delete database records of graduated students to prevent them from resurfacing
+        const studentsToDelete = list.filter(student => 
+          RECENT_GRADUATE_STUDENTS.some(old => old.grade === student.grade && old.name === student.name)
+        );
+        if (studentsToDelete.length > 0) {
+          const batch = writeBatch(db);
+          studentsToDelete.forEach(student => {
+            batch.delete(doc(db, "students", student.id));
+          });
+          batch.commit().catch(e => console.error("Error cleaning up graduated students:", e));
+        }
+
+        const remainingStudents = list.filter(student => 
+          !RECENT_GRADUATE_STUDENTS.some(old => old.grade === student.grade && old.name === student.name)
+        );
+        setStudents(remainingStudents.sort((a, b) => a.grade === b.grade ? a.name.localeCompare(b.name, 'ko-KR') : a.grade - b.grade));
         
         // If snapshot is not empty and we haven't marked as seeded in this session, ensure the config flag is set in Firestore
         if (!hasSeededRef.current) {

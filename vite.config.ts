@@ -5,9 +5,8 @@ import react from '@vitejs/plugin-react'
 export default defineConfig(({ mode }) => {
   // 현재 환경 변수 로드 (API KEY 등)
   const env = loadEnv(mode, (process as any).cwd(), '');
-
+  
   return {
-    base: '/School-Out/', // <--- 딱 이 한 줄만 여기에 추가되었습니다!
     plugins: [react()],
     define: {
       // 코드에서 process.env.API_KEY를 사용할 수 있도록 값을 치환해줍니다.
