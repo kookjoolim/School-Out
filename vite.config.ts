@@ -7,6 +7,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, (process as any).cwd(), '');
   
   return {
+    base: './', // GitHub Pages 배포 시 파일 경로가 깨지는 현상을 방지합니다.
     plugins: [react()],
     define: {
       // 코드에서 process.env.API_KEY를 사용할 수 있도록 값을 치환해줍니다.
