@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { DismissalRecord, UserRole, LunchData, Student, TeacherView } from './types';
 import { generateGoodbyeMessage, fetchLunchMenu } from './services/geminiService';
 import { db } from './services/firebase';
-import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, writeBatch } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, writeBatch, getDoc, setDoc } from 'firebase/firestore';
 
 // Declare SheetJS global
 declare const XLSX: any;
@@ -114,6 +114,7 @@ function App() {
 
   const [deleteModal, setDeleteModal] = useState<{isOpen: boolean, type: 'RECORD' | 'STUDENT', id: string | null, name: string}>({ isOpen: false, type: 'RECORD', id: null, name: '' });
   const [isDeleting, setIsDeleting] = useState(false);
+  const hasSeededRef = useRef(false);
 
   useEffect(() => {
     const unsubRecords = onSnapshot(query(collection(db, "dismissals"), orderBy("timestamp", "desc")), (snap) => {
@@ -121,12 +122,42 @@ function App() {
     });
     const unsubStudents = onSnapshot(collection(db, "students"), async (snap) => {
       if (snap.empty) {
-        const batch = writeBatch(db);
-        INITIAL_STUDENTS.forEach(s => batch.set(doc(collection(db, "students")), s));
-        await batch.commit();
+        try {
+          const configDocRef = doc(db, "config", "system");
+          const configSnap = await getDoc(configDocRef);
+          if (configSnap.exists() && configSnap.data()?.seeded) {
+            // Already seeded in the past, meaning the user intentionally emptied the list. Do not re-seed.
+            setStudents([]);
+            return;
+          }
+          
+          // Seed the initial students and mark as seeded
+          const batch = writeBatch(db);
+          INITIAL_STUDENTS.forEach(s => batch.set(doc(collection(db, "students")), s));
+          batch.set(configDocRef, { seeded: true });
+          await batch.commit();
+          hasSeededRef.current = true;
+        } catch (e) {
+          console.error("Error checking/seeding initial students:", e);
+          setStudents([]);
+        }
       } else {
         const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Student));
         setStudents(list.sort((a, b) => a.grade === b.grade ? a.name.localeCompare(b.name, 'ko-KR') : a.grade - b.grade));
+        
+        // If snapshot is not empty and we haven't marked as seeded in this session, ensure the config flag is set in Firestore
+        if (!hasSeededRef.current) {
+          hasSeededRef.current = true;
+          try {
+            const configDocRef = doc(db, "config", "system");
+            const configSnap = await getDoc(configDocRef);
+            if (!configSnap.exists() || !configSnap.data()?.seeded) {
+              await setDoc(configDocRef, { seeded: true });
+            }
+          } catch (e) {
+            console.error("Error setting seeded flag:", e);
+          }
+        }
       }
     });
     return () => { unsubRecords(); unsubStudents(); };

@@ -26,5 +26,6 @@
     "vite": "^5.2.0"
   },
   "requestFramePermissions": [],
-  "description": ""
+  "description": "",
+  "majorCapabilities": []
 }
